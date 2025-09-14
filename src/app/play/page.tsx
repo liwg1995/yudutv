@@ -2886,35 +2886,23 @@ function PlayPageClient() {
               
               let isConfigVisible = false;
               
-              // 弹幕面板位置修正函数 - 带防抖优化
-              let adjustPositionTimer: NodeJS.Timeout | null = null;
+              // 弹幕面板位置修正函数 - 简化版本
               const adjustPanelPosition = () => {
-                // 清除之前的定时器，实现防抖
-                if (adjustPositionTimer) {
-                  clearTimeout(adjustPositionTimer);
+                const player = document.querySelector('.artplayer');
+                if (!player || !configButton || !configPanel) return;
+
+                try {
+                  const panelElement = configPanel as HTMLElement;
+
+                  // 始终清除内联样式，使用CSS默认定位
+                  panelElement.style.left = '';
+                  panelElement.style.right = '';
+                  panelElement.style.transform = '';
+
+                  console.log('弹幕面板：使用CSS默认定位，自动适配屏幕方向');
+                } catch (error) {
+                  console.warn('弹幕面板位置调整失败:', error);
                 }
-                
-                adjustPositionTimer = setTimeout(() => {
-                  const player = document.querySelector('.artplayer');
-                  if (!player || !configButton || !configPanel) return;
-                  
-                  try {
-                    const panelElement = configPanel as HTMLElement;
-                    const isFullscreen = player.classList.contains('art-fullscreen') || player.classList.contains('art-fullscreen-web');
-
-                    // 清除所有可能影响定位的内联样式，让CSS接管
-                    panelElement.style.left = '';
-                    panelElement.style.right = '';
-                    panelElement.style.top = '';
-                    panelElement.style.bottom = '';
-                    panelElement.style.transform = '';
-                    panelElement.style.position = '';
-
-                    console.log('弹幕面板：使用CSS默认定位，自动适配', isFullscreen ? '全屏模式' : '普通模式');
-                  } catch (error) {
-                    console.warn('弹幕面板位置调整失败:', error);
-                  }
-                }, 100); // 100ms防抖延迟
               };
               
               // 添加点击事件监听器
@@ -2925,102 +2913,55 @@ function PlayPageClient() {
                 isConfigVisible = !isConfigVisible;
                 
                 if (isConfigVisible) {
-                  (configPanel as HTMLElement).style.opacity = '1';
-                  (configPanel as HTMLElement).style.pointerEvents = 'all';
-                  // 显示后延迟调整位置，确保DOM完全更新
-                  setTimeout(() => {
-                    adjustPanelPosition();
-                  }, 50);
+                  (configPanel as HTMLElement).style.display = 'block';
+                  // 显示后立即调整位置
+                  setTimeout(adjustPanelPosition, 10);
                   console.log('移动端弹幕配置面板：显示');
                 } else {
-                  (configPanel as HTMLElement).style.opacity = '0';
-                  (configPanel as HTMLElement).style.pointerEvents = 'none';
+                  (configPanel as HTMLElement).style.display = 'none';
                   console.log('移动端弹幕配置面板：隐藏');
                 }
               });
               
-              // 监听ArtPlayer的resize事件，在每次resize后重新调整弹幕面板位置
+              // 监听ArtPlayer的resize事件
               if (artPlayerRef.current) {
                 artPlayerRef.current.on('resize', () => {
                   if (isConfigVisible) {
                     console.log('检测到ArtPlayer resize事件，重新调整弹幕面板位置');
-                    adjustPanelPosition(); // 使用防抖的调整函数
+                    setTimeout(adjustPanelPosition, 50); // 短暂延迟确保resize完成
                   }
                 });
-
-                // 监听全屏状态变化
-                artPlayerRef.current.on('fullscreen', (fullscreen: boolean) => {
-                  if (isConfigVisible) {
-                    console.log('检测到全屏状态变化:', fullscreen ? '进入全屏' : '退出全屏');
-                    adjustPanelPosition(); // 使用防抖的调整函数
-                  }
-                });
-
-                artPlayerRef.current.on('fullscreenWeb', (fullscreen: boolean) => {
-                  if (isConfigVisible) {
-                    console.log('检测到网页全屏状态变化:', fullscreen ? '进入网页全屏' : '退出网页全屏');
-                    adjustPanelPosition(); // 使用防抖的调整函数
-                  }
-                });
-
-                console.log('已监听ArtPlayer resize和全屏事件，实现自动适配');
+                console.log('已监听ArtPlayer resize事件，实现自动适配');
               }
               
-              // 监听播放器设置面板的变化，确保弹幕菜单位置正确 - 优化版本
-              const observePlayerChanges = () => {
-                const playerElement = document.querySelector('.artplayer');
-                if (!playerElement) return () => { /* no-op */ };
-                
-                let observerTimer: NodeJS.Timeout | null = null;
-                const observer = new MutationObserver(() => {
-                  if (isConfigVisible) {
-                    // 防抖处理DOM变化
-                    if (observerTimer) clearTimeout(observerTimer);
-                    observerTimer = setTimeout(() => adjustPanelPosition(), 150);
-                  }
-                });
-                
-                observer.observe(playerElement, { 
-                  childList: true, 
-                  subtree: false, // 减少观察范围
-                  attributes: true, 
-                  attributeFilter: ['class'] // 只观察class变化
-                });
-                
-                return () => {
-                  observer.disconnect();
-                  if (observerTimer) clearTimeout(observerTimer);
-                };
-              };
-              
-              const disconnectObserver = observePlayerChanges();
-              
-              // 额外监听屏幕方向变化事件，确保完全自动适配 - 防抖版本
-              let orientationTimer: NodeJS.Timeout | null = null;
+              // 额外监听屏幕方向变化事件，确保完全自动适配
               const handleOrientationChange = () => {
                 if (isConfigVisible) {
                   console.log('检测到屏幕方向变化，重新调整弹幕面板位置');
-                  // 防抖处理方向变化
-                  if (orientationTimer) clearTimeout(orientationTimer);
-                  orientationTimer = setTimeout(() => adjustPanelPosition(), 200);
+                  setTimeout(adjustPanelPosition, 100); // 稍长延迟等待方向变化完成
                 }
               };
-              
+
               window.addEventListener('orientationchange', handleOrientationChange);
               window.addEventListener('resize', handleOrientationChange);
-              
-              // 清理函数 - 增强版本
+
+              // 清理函数
               const _cleanup = () => {
                 window.removeEventListener('orientationchange', handleOrientationChange);
                 window.removeEventListener('resize', handleOrientationChange);
-                disconnectObserver(); // 断开DOM变化观察器
-                if (adjustPositionTimer) clearTimeout(adjustPositionTimer);
-                if (orientationTimer) clearTimeout(orientationTimer);
               };
-              
-              // 移除点击外部区域自动隐藏功能，改为固定显示模式
-              // 弹幕设置菜单现在只能通过再次点击按钮来关闭，与显示设置保持一致
-              
+
+              // 点击其他地方自动隐藏
+              document.addEventListener('click', (e) => {
+                if (isConfigVisible &&
+                    !configButton.contains(e.target as Node) &&
+                    !configPanel.contains(e.target as Node)) {
+                  isConfigVisible = false;
+                  (configPanel as HTMLElement).style.display = 'none';
+                  console.log('点击外部区域，隐藏弹幕配置面板');
+                }
+              });
+
               console.log('移动端弹幕配置切换功能已激活');
             } else {
               // 桌面端：使用hover延迟交互，与移动端保持一致

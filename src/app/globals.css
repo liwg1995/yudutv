@@ -93,13 +93,13 @@ html:not(.dark) body {
   }
 }
 
-/* 隐藏所有滚动条（兼容 WebKit、Firefox、IE/Edge） */
-* {
+/* 隐藏所有滚动条（兼容 WebKit、Firefox、IE/Edge）- 排除ArtPlayer */
+*:not(.artplayer):not(.artplayer *) {
   -ms-overflow-style: none; /* IE & Edge */
   scrollbar-width: none; /* Firefox */
 }
 
-*::-webkit-scrollbar {
+*:not(.artplayer):not(.artplayer *)::webkit-scrollbar {
   display: none; /* Chrome, Safari, Opera */
 }
 
@@ -161,7 +161,7 @@ div[data-media-provider] video {
 }
 
 /* 隐藏移动端竖屏时的 pip 按钮 */
-@media (max-width: 768px) {
+@media (max-width: 480px) and (orientation: portrait) and (hover: none) and (pointer: coarse) {
   .art-control-pip {
     display: none !important;
   }
@@ -172,6 +172,47 @@ div[data-media-provider] video {
 
   .art-control-volume {
     display: none !important;
+  }
+}
+
+/* 修复音量控制hover区域 - 终极稳定方案 */
+.art-control-volume {
+  position: relative !important;
+}
+
+/* 扩大音量控制按钮的hover检测区域 */
+.art-control-volume::before {
+  content: '';
+  position: absolute;
+  top: -80px; /* 扩大到面板上方 */
+  left: -15px;
+  right: -15px;
+  bottom: -5px;
+  z-index: -1; /* 在后面，不阻挡点击 */
+  pointer-events: auto; /* 允许hover检测 */
+}
+
+/* 当面板本身被hover时也要保持显示 */
+.art-volume-panel:hover {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  pointer-events: auto !important;
+}
+
+/* 强化原有的hover规则 */
+.art-control-volume:hover .art-volume-panel {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+  pointer-events: auto !important;
+  transition: all 0.1s ease !important; /* 更快的响应 */
+}
+
+/* 修复移动端弹幕面板定位问题 */
+@media (max-width: 768px) {
+  .artplayer-plugin-danmuku .apd-config-panel,
+  .artplayer-plugin-danmuku .apd-style-panel {
+    left: 40% !important;
+    transform: translateX(-50%) !important;
   }
 }
 
