@@ -95,25 +95,24 @@ export async function GET(request: NextRequest) {
       hasMore: result.hasMore
     });
 
-    // 强力禁用所有层级的缓存
+    // 设置与网页端一致的缓存策略（lists: 2小时）
     const response = NextResponse.json(result);
 
-    // 标准HTTP缓存控制
-    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate, proxy-revalidate');
-    response.headers.set('Pragma', 'no-cache');
-    response.headers.set('Expires', '0');
+    console.log('🕐 [LIST] 设置2小时HTTP缓存 - 与网页端lists缓存一致');
 
-    // 移动端特定缓存控制
-    response.headers.set('Surrogate-Control', 'no-store');
-    response.headers.set('X-Accel-Expires', '0');
+    // 2小时 = 7200秒（与网页端SHORTDRAMA_CACHE_EXPIRE.lists一致）
+    const cacheTime = 7200;
+    response.headers.set('Cache-Control', `public, max-age=${cacheTime}, s-maxage=${cacheTime}`);
+    response.headers.set('CDN-Cache-Control', `public, s-maxage=${cacheTime}`);
+    response.headers.set('Vercel-CDN-Cache-Control', `public, s-maxage=${cacheTime}`);
 
-    // 防止代理缓存
-    response.headers.set('Vary', 'Accept-Encoding, User-Agent');
-
-    // 强制刷新标识
-    response.headers.set('X-Cache-Status', 'MISS');
+    // 调试信息
+    response.headers.set('X-Cache-Duration', '2hour');
+    response.headers.set('X-Cache-Expires-At', new Date(Date.now() + cacheTime * 1000).toISOString());
     response.headers.set('X-Debug-Timestamp', new Date().toISOString());
-    response.headers.set('X-Force-Refresh', 'true');
+
+    // Vary头确保不同设备有不同缓存
+    response.headers.set('Vary', 'Accept-Encoding, User-Agent');
 
     return response;
   } catch (error) {

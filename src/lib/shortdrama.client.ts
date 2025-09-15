@@ -42,19 +42,13 @@ export async function getShortDramaCategories(): Promise<ShortDramaCategory[]> {
       }
     }
 
-    const timestamp = Date.now();
     const apiUrl = isMobile()
-      ? `/api/shortdrama/categories?_t=${timestamp}`
+      ? `/api/shortdrama/categories`
       : getApiBase('/categories');
 
     // 移动端使用内部API，桌面端调用外部API
     const fetchOptions: RequestInit = isMobile() ? {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
+      // 移动端：让浏览器使用HTTP缓存，不添加破坏缓存的headers
     } : {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -173,18 +167,12 @@ export async function getShortDramaList(
       }
     }
 
-    const timestamp = Date.now();
     const apiUrl = isMobile()
-      ? `/api/shortdrama/list?categoryId=${category}&page=${page}&size=${size}&_t=${timestamp}`
+      ? `/api/shortdrama/list?categoryId=${category}&page=${page}&size=${size}`
       : `${SHORTDRAMA_API_BASE}/vod/list?categoryId=${category}&page=${page}&size=${size}`;
 
     const fetchOptions: RequestInit = isMobile() ? {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
+      // 移动端：让浏览器使用HTTP缓存，不添加破坏缓存的headers
     } : {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -240,18 +228,12 @@ export async function searchShortDramas(
   size = 20
 ): Promise<{ list: ShortDramaItem[]; hasMore: boolean }> {
   try {
-    const timestamp = Date.now();
     const apiUrl = isMobile()
-      ? `/api/shortdrama/search?name=${encodeURIComponent(query)}&page=${page}&size=${size}&_t=${timestamp}`
+      ? `/api/shortdrama/search?name=${encodeURIComponent(query)}&page=${page}&size=${size}`
       : `${SHORTDRAMA_API_BASE}/vod/search?name=${encodeURIComponent(query)}&page=${page}&size=${size}`;
 
     const fetchOptions: RequestInit = isMobile() ? {
-      cache: 'no-store',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0'
-      }
+      // 移动端：让浏览器使用HTTP缓存，不添加破坏缓存的headers
     } : {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
