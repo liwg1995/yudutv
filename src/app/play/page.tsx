@@ -2257,7 +2257,7 @@ function PlayPageClient() {
         flip: false,
         playbackRate: true,
         aspectRatio: false,
-        fullscreen: true,
+        fullscreen: true, // 恢复默认全屏按钮
         fullscreenWeb: true,
         subtitleOffset: false,
         miniProgressBar: false,
