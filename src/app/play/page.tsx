@@ -1722,10 +1722,10 @@ function PlayPageClient() {
         const allResults: SearchResult[] = [];
         let bestResults: SearchResult[] = [];
         
-        // 依次尝试每个搜索变体
+        // 依次尝试每个搜索变体，采用早期退出策略
         for (const variant of searchVariants) {
           console.log('尝试搜索变体:', variant);
-          
+
           const response = await fetch(
             `/api/search?q=${encodeURIComponent(variant)}`
           );
@@ -1734,10 +1734,17 @@ function PlayPageClient() {
             continue;
           }
           const data = await response.json();
-          
+
           if (data.results && data.results.length > 0) {
             allResults.push(...data.results);
-            
+
+            // 早期退出策略：如果原始查询得到足够多结果(≥5个)，直接返回
+            if (variant === searchVariants[0] && data.results.length >= 5) {
+              console.log(`原始查询获得 ${data.results.length} 个结果，采用早期退出策略`);
+              bestResults = data.results;
+              break;
+            }
+
             // 处理搜索结果，使用智能模糊匹配
             const filteredResults = data.results.filter(
               (result: SearchResult) => {
@@ -1764,9 +1771,9 @@ function PlayPageClient() {
                 return titleMatch && yearMatch && typeMatch;
               }
             );
-            
+
             if (filteredResults.length > 0) {
-              console.log(`变体 "${variant}" 找到 ${filteredResults.length} 个匹配结果`);
+              console.log(`变体 "${variant}" 找到 ${filteredResults.length} 个精确匹配结果`);
               bestResults = filteredResults;
               break; // 找到精确匹配就停止
             }
