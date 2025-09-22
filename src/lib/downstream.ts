@@ -283,25 +283,21 @@ function calculateRelevanceScore(originalQuery: string, variant: string, results
     let matchedWords = 0;
     originalWords.forEach(word => {
       if (title.includes(word)) {
-        titleScore += 50;
+        // 较长的词（如"血脉诅咒"）给予更高权重
+        const wordWeight = word.length > 2 ? 100 : 50;
+        titleScore += wordWeight;
         matchedWords++;
       }
     });
 
-    // 完全匹配奖励：所有词都匹配
+    // 完全匹配奖励：所有词都匹配时给予巨大奖励
     if (matchedWords === originalWords.length && originalWords.length > 1) {
-      titleScore += 200;
+      titleScore += 500; // 大幅提高完全匹配的奖励
     }
 
-    // 数字优先级：如果查询不包含数字但结果包含，优先较大的数字
-    if (!/\d/.test(originalQuery) && /\d+/.test(title)) {
-      const numbers = title.match(/\d+/g);
-      if (numbers) {
-        // 取最大的数字作为优先级指标
-        const maxNumber = Math.max(...numbers.map(n => parseInt(n)));
-        // 较大的数字获得更高分数（假设是较新的版本）
-        titleScore += Math.min(maxNumber * 10, 100);
-      }
+    // 部分匹配惩罚：如果只匹配了部分词，降低分数
+    if (matchedWords < originalWords.length && originalWords.length > 1) {
+      titleScore -= 100; // 惩罚不完整匹配
     }
 
     // 标题长度惩罚：过长的标题降低优先级（可能不够精确）
