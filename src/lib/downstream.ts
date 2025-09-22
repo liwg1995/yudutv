@@ -147,22 +147,55 @@ export async function searchFromApi(
     let results: SearchResult[] = [];
     let pageCountFromFirst = 0;
     
-    // 依次尝试每种搜索变体，找到第一个有结果的就停止
+    // 调试：输出搜索变体
+    console.log(`[DEBUG] 搜索变体 for "${query}":`, searchVariants);
+
+    // 尝试所有搜索变体，收集所有结果，然后选择最相关的
+    const allVariantResults: Array<{variant: string, results: SearchResult[], relevanceScore: number}> = [];
+
     for (const variant of searchVariants) {
       const apiUrl =
         apiBaseUrl + API_CONFIG.search.path + encodeURIComponent(variant);
 
-      // 使用新的缓存搜索函数处理第一页
-      const firstPageResult = await searchWithCache(apiSite, variant, 1, apiUrl, 8000);
-      
-      if (firstPageResult.results.length > 0) {
-        results = firstPageResult.results;
-        pageCountFromFirst = firstPageResult.pageCount || 1;
-        // 找到结果就使用这个变体进行后续分页搜索
-        query = variant;
-        break;
+      console.log(`[DEBUG] 尝试搜索变体: "${variant}" on ${apiSite.name}`);
+
+      try {
+        // 使用新的缓存搜索函数处理第一页
+        const firstPageResult = await searchWithCache(apiSite, variant, 1, apiUrl, 8000);
+
+        if (firstPageResult.results.length > 0) {
+          // 计算相关性分数
+          const relevanceScore = calculateRelevanceScore(query, variant, firstPageResult.results);
+          console.log(`[DEBUG] 变体 "${variant}" 找到 ${firstPageResult.results.length} 个结果, 相关性分数: ${relevanceScore}`);
+
+          allVariantResults.push({
+            variant,
+            results: firstPageResult.results,
+            relevanceScore
+          });
+        } else {
+          console.log(`[DEBUG] 变体 "${variant}" 无结果`);
+        }
+      } catch (error) {
+        console.log(`[DEBUG] 变体 "${variant}" 搜索失败:`, error);
       }
     }
+
+    // 如果没有任何结果，返回空数组
+    if (allVariantResults.length === 0) {
+      return [];
+    }
+
+    // 选择相关性分数最高的结果
+    const bestResult = allVariantResults.reduce((best, current) =>
+      current.relevanceScore > best.relevanceScore ? current : best
+    );
+
+    console.log(`[DEBUG] 选择最佳变体: "${bestResult.variant}", 分数: ${bestResult.relevanceScore}`);
+
+    results = bestResult.results;
+    query = bestResult.variant; // 用于后续分页
+    pageCountFromFirst = 1; // 重置页数
     
     // 如果所有变体都没有结果，直接返回空数组
     if (results.length === 0) {
@@ -214,6 +247,83 @@ export async function searchFromApi(
   }
 }
 
+/**
+ * 计算搜索结果的相关性分数
+ * @param originalQuery 原始查询
+ * @param variant 搜索变体
+ * @param results 搜索结果
+ * @returns 相关性分数（越高越相关）
+ */
+function calculateRelevanceScore(originalQuery: string, variant: string, results: SearchResult[]): number {
+  let score = 0;
+
+  // 基础分数：结果数量（越多越好，但有上限）
+  score += Math.min(results.length * 10, 100);
+
+  // 变体质量分数：越接近原始查询越好
+  if (variant === originalQuery) {
+    score += 1000; // 完全匹配最高分
+  } else if (variant.includes('：') && originalQuery.includes(' ')) {
+    score += 500; // 空格变冒号的变体较高分
+  } else if (variant.includes(':') && originalQuery.includes(' ')) {
+    score += 400; // 空格变英文冒号
+  } else if (/\d/.test(variant) && !/\d/.test(originalQuery)) {
+    score += 300; // 添加数字的变体
+  }
+
+  // 结果质量分数：检查结果标题的匹配程度
+  const originalWords = originalQuery.toLowerCase().replace(/[^\w\s\u4e00-\u9fff]/g, '').split(/\s+/).filter(w => w.length > 0);
+
+  results.forEach(result => {
+    const title = result.title.toLowerCase();
+    let titleScore = 0;
+
+    // 检查原始查询中的每个词是否在标题中
+    let matchedWords = 0;
+    originalWords.forEach(word => {
+      if (title.includes(word)) {
+        titleScore += 50;
+        matchedWords++;
+      }
+    });
+
+    // 完全匹配奖励：所有词都匹配
+    if (matchedWords === originalWords.length && originalWords.length > 1) {
+      titleScore += 200;
+    }
+
+    // 数字优先级：如果查询不包含数字但结果包含，优先较大的数字
+    if (!/\d/.test(originalQuery) && /\d+/.test(title)) {
+      const numbers = title.match(/\d+/g);
+      if (numbers) {
+        // 取最大的数字作为优先级指标
+        const maxNumber = Math.max(...numbers.map(n => parseInt(n)));
+        // 较大的数字获得更高分数（假设是较新的版本）
+        titleScore += Math.min(maxNumber * 10, 100);
+      }
+    }
+
+    // 标题长度惩罚：过长的标题降低优先级（可能不够精确）
+    if (title.length > 50) {
+      titleScore -= 20;
+    }
+
+    // 年份奖励：较新的年份获得更高分数
+    if (result.year && result.year !== 'unknown') {
+      const year = parseInt(result.year);
+      if (year >= 2020) {
+        titleScore += 30;
+      } else if (year >= 2010) {
+        titleScore += 10;
+      }
+    }
+
+    score += titleScore;
+  });
+
+  return score;
+}
+
 // 匹配 m3u8 链接的正则
 const M3U8_PATTERN = /(https?:\/\/[^"'\s]+?\.m3u8)/g;
 
@@ -237,21 +347,29 @@ function generateSearchVariants(originalQuery: string): string[] {
     }
   });
 
+  // 3. 数字变体处理（针对"死神来了 血脉诅咒" vs "死神来了6：血脉诅咒"这种情况）
+  const numberVariants = generateNumberVariants(trimmed);
+  numberVariants.forEach(variant => {
+    if (!variants.includes(variant)) {
+      variants.push(variant);
+    }
+  });
+
   // 如果包含空格，生成额外变体
   if (trimmed.includes(' ')) {
-    // 3. 去除所有空格
+    // 4. 去除所有空格
     const noSpaces = trimmed.replace(/\s+/g, '');
     if (noSpaces !== trimmed) {
       variants.push(noSpaces);
     }
 
-    // 4. 标准化空格（多个空格合并为一个）
+    // 5. 标准化空格（多个空格合并为一个）
     const normalizedSpaces = trimmed.replace(/\s+/g, ' ');
     if (normalizedSpaces !== trimmed && !variants.includes(normalizedSpaces)) {
       variants.push(normalizedSpaces);
     }
 
-    // 5. 提取关键词组合（针对"中餐厅 第九季"这种情况）
+    // 6. 提取关键词组合（针对"中餐厅 第九季"这种情况）
     const keywords = trimmed.split(/\s+/);
     if (keywords.length >= 2) {
       // 主要关键词 + 季/集等后缀
@@ -266,6 +384,18 @@ function generateSearchVariants(originalQuery: string): string[] {
         }
       }
 
+      // 7. 空格变冒号的变体（重要！针对"死神来了 血脉诅咒" -> "死神来了：血脉诅咒"）
+      const withColon = trimmed.replace(/\s+/g, '：');
+      if (!variants.includes(withColon)) {
+        variants.push(withColon);
+      }
+
+      // 8. 空格变英文冒号的变体
+      const withEnglishColon = trimmed.replace(/\s+/g, ':');
+      if (!variants.includes(withEnglishColon)) {
+        variants.push(withEnglishColon);
+      }
+
       // 仅使用主关键词搜索
       if (!variants.includes(mainKeyword)) {
         variants.push(mainKeyword);
@@ -275,6 +405,53 @@ function generateSearchVariants(originalQuery: string): string[] {
 
   // 去重并返回
   return Array.from(new Set(variants));
+}
+
+/**
+ * 生成数字相关的搜索变体
+ * @param query 原始查询
+ * @returns 数字变体数组
+ */
+function generateNumberVariants(query: string): string[] {
+  const variants: string[] = [];
+
+  // 如果查询不包含数字，尝试添加常见的数字变体
+  if (!/\d/.test(query)) {
+    // 针对系列电影/剧集，尝试添加常见的数字
+    const seriesNumbers = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+
+    seriesNumbers.forEach(num => {
+      // 在空格位置插入数字
+      if (query.includes(' ')) {
+        const withNumber = query.replace(/\s+/, num);
+        variants.push(withNumber);
+
+        // 也尝试数字+冒号的组合
+        const withNumberColon = query.replace(/\s+/, num + '：');
+        variants.push(withNumberColon);
+
+        const withNumberEnglishColon = query.replace(/\s+/, num + ':');
+        variants.push(withNumberEnglishColon);
+      } else {
+        // 在末尾添加数字
+        variants.push(query + num);
+      }
+    });
+  } else {
+    // 如果包含数字，尝试移除数字的变体
+    const withoutNumbers = query.replace(/\d+/g, '');
+    if (withoutNumbers !== query && withoutNumbers.trim()) {
+      variants.push(withoutNumbers.trim());
+
+      // 清理多余的标点符号
+      const cleaned = withoutNumbers.replace(/[：:]\s*/, ' ').trim();
+      if (cleaned !== withoutNumbers && !variants.includes(cleaned)) {
+        variants.push(cleaned);
+      }
+    }
+  }
+
+  return variants;
 }
 
 /**
