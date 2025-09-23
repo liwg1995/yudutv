@@ -393,8 +393,11 @@ function generateSearchVariants(originalQuery: string): string[] {
         variants.push(withEnglishColon);
       }
 
-      // 仅使用主关键词搜索
-      if (!variants.includes(mainKeyword)) {
+      // 仅使用主关键词搜索（过滤无意义的词）
+      const meaninglessWords = ['the', 'a', 'an', 'and', 'or', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by'];
+      if (!variants.includes(mainKeyword) &&
+          !meaninglessWords.includes(mainKeyword.toLowerCase()) &&
+          mainKeyword.length > 2) {
         variants.push(mainKeyword);
       }
     }
