@@ -337,8 +337,8 @@ export async function searchTMDBActorWorks(
 
     // 5. 排序
     const sortBy = filterOptions.sortBy || 'date';
-    const sortOrder = filterOptions.sortOrder || 'asc';
-    const orderMultiplier = sortOrder === 'asc' ? 1 : -1;
+    const sortOrder = filterOptions.sortOrder || 'desc';
+    const orderMultiplier = sortOrder === 'asc' ? -1 : 1;
 
     filteredWorks.sort((a: any, b: any) => {
       let compareValue = 0;

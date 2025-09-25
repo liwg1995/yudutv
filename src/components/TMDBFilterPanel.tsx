@@ -365,12 +365,12 @@ export const TMDBFilterPanel: React.FC<TMDBFilterPanelProps> = ({
                   ))}
                 </select>
                 <select
-                  value={localFilters.sortOrder || 'asc'}
+                  value={localFilters.sortOrder || 'desc'}
                   onChange={(e) => updateFilter('sortOrder', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
-                  <option value="asc">降序</option>
-                  <option value="desc">升序</option>
+                  <option value="desc">降序</option>
+                  <option value="asc">升序</option>
                 </select>
               </div>
             </div>
