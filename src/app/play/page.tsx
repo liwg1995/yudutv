@@ -1457,7 +1457,10 @@ function PlayPageClient() {
     // 🔥 标记正在切换集数（只在非换源时）
     if (!isSourceChangingRef.current) {
       isEpisodeChangingRef.current = true;
-      console.log('🔄 开始切换集数，标记为集数变化');
+      // 🔑 立即重置 SkipController 触发标志，允许新集数自动跳过片头片尾
+      isSkipControllerTriggeredRef.current = false;
+      videoEndedHandledRef.current = false;
+      console.log('🔄 开始切换集数，重置自动跳过标志');
     }
 
     updateVideoUrl(detail, currentEpisodeIndex);
@@ -2519,8 +2522,10 @@ function PlayPageClient() {
 
             // 🔥 重置集数切换标识
             if (isEpisodeChange) {
+              // 🔑 关键修复：切换集数后显式重置播放时间为 0，确保片头自动跳过能触发
+              artPlayerRef.current.currentTime = 0;
+              console.log('🎯 集数切换完成，重置播放时间为 0');
               isEpisodeChangingRef.current = false;
-              console.log('🎯 集数切换完成，重置标识');
             }
           }
         }).catch((error: any) => {
