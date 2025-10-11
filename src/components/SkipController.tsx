@@ -413,6 +413,7 @@ export default function SkipController({
       // 比较片段类型而不是对象引用（避免临时对象导致的重复触发）
       if (currentSegment && currentSegment.type !== currentSkipSegment?.type) {
         console.log(`🎯 [SkipController] 检测到${currentSegment.type}片段: ${currentSegment.start}s-${currentSegment.end}s, autoSkip=${currentSegment.autoSkip}`);
+        console.log(`📌 [SkipController] 防重复检查: lastProcessed=${lastProcessed ? `${lastProcessed.type}@${lastProcessed.episodeId}` : 'null'}, currentEpisodeId=${currentEpisodeId}`);
 
         // 🔥 关键修复：检查是否已经处理过这个片段（同一集同一片段类型）
         if (lastProcessed && lastProcessed.type === currentSegment.type && lastProcessed.episodeId === currentEpisodeId) {
