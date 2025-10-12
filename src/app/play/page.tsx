@@ -2127,9 +2127,13 @@ function PlayPageClient() {
     const d = detailRef.current;
     const idx = currentEpisodeIndexRef.current;
     if (d && d.episodes && idx < d.episodes.length - 1) {
-      if (artPlayerRef.current && !artPlayerRef.current.paused) {
-        saveCurrentPlayProgress();
-      }
+      // 🔥 关键修复：通过 SkipController 自动跳下一集时，不保存播放进度
+      // 因为此时的播放位置是片尾，用户并没有真正看到这个位置
+      // 如果保存了片尾的进度，下次"继续观看"会从片尾开始，导致进度错误
+      // if (artPlayerRef.current && !artPlayerRef.current.paused) {
+      //   saveCurrentPlayProgress();
+      // }
+
       // 🔑 标记通过 SkipController 触发了下一集
       isSkipControllerTriggeredRef.current = true;
       setCurrentEpisodeIndex(idx + 1);
@@ -3511,7 +3515,15 @@ function PlayPageClient() {
 
       artPlayerRef.current.on('pause', () => {
         releaseWakeLock();
-        saveCurrentPlayProgress();
+        // 🔥 关键修复：暂停时也检查是否在片尾，避免保存错误的进度
+        const currentTime = artPlayerRef.current?.currentTime || 0;
+        const duration = artPlayerRef.current?.duration || 0;
+        const remainingTime = duration - currentTime;
+        const isNearEnd = duration > 0 && remainingTime < 180; // 最后3分钟
+
+        if (!isNearEnd) {
+          saveCurrentPlayProgress();
+        }
       });
 
       artPlayerRef.current.on('video:ended', () => {
@@ -3716,15 +3728,28 @@ function PlayPageClient() {
         const saveNow = Date.now();
         // upstash需要更长间隔避免频率限制，其他存储类型也适当降低频率减少性能开销
         const interval = process.env.NEXT_PUBLIC_STORAGE_TYPE === 'upstash' ? 20000 : 10000; // 统一提高到10秒
-        
-        if (saveNow - lastSaveTimeRef.current > interval) {
+
+        // 🔥 关键修复：如果当前播放位置接近视频结尾（最后3分钟），不保存进度
+        // 这是为了避免自动跳过片尾时保存了片尾位置的进度，导致"继续观看"从错误位置开始
+        const remainingTime = duration - currentTime;
+        const isNearEnd = duration > 0 && remainingTime < 180; // 最后3分钟
+
+        if (saveNow - lastSaveTimeRef.current > interval && !isNearEnd) {
           saveCurrentPlayProgress();
           lastSaveTimeRef.current = saveNow;
         }
       });
 
       artPlayerRef.current.on('pause', () => {
-        saveCurrentPlayProgress();
+        // 🔥 关键修复：暂停时也检查是否在片尾，避免保存错误的进度
+        const currentTime = artPlayerRef.current?.currentTime || 0;
+        const duration = artPlayerRef.current?.duration || 0;
+        const remainingTime = duration - currentTime;
+        const isNearEnd = duration > 0 && remainingTime < 180; // 最后3分钟
+
+        if (!isNearEnd) {
+          saveCurrentPlayProgress();
+        }
       });
 
       if (artPlayerRef.current?.video) {
@@ -4109,6 +4134,7 @@ function PlayPageClient() {
                     source={currentSource}
                     id={currentId}
                     title={detail.title}
+                    episodeIndex={currentEpisodeIndex}
                     artPlayerRef={artPlayerRef}
                     currentTime={currentPlayTime}
                     duration={videoDuration}
