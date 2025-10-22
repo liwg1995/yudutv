@@ -897,13 +897,13 @@ export default function SourceBrowserPage() {
         {/* 预览弹层 */}
         {previewOpen && (
           <div
-            className='fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-fadeIn'
+            className='fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm px-3 py-6 sm:p-4 pb-20 md:pb-4 animate-fadeIn'
             role='dialog'
             aria-modal='true'
             onClick={() => setPreviewOpen(false)}
           >
             <div
-              className='w-full max-w-5xl bg-gradient-to-br from-white via-blue-50/20 to-white dark:from-gray-800 dark:via-blue-900/10 dark:to-gray-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border-2 border-gray-200/50 dark:border-gray-700/50 animate-scaleIn'
+              className='w-full max-w-5xl bg-gradient-to-br from-white via-blue-50/20 to-white dark:from-gray-800 dark:via-blue-900/10 dark:to-gray-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] md:max-h-[90vh] border-2 border-gray-200/50 dark:border-gray-700/50 animate-scaleIn'
               onClick={(e) => e.stopPropagation()}
             >
               {/* 头部 */}
