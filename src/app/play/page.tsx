@@ -1215,14 +1215,43 @@ function PlayPageClient() {
     // 按行分割M3U8内容
     const lines = m3u8Content.split('\n');
     const filteredLines = [];
+    let inAdBlock = false; // 是否在广告区块内
+    let adSegmentCount = 0; // 统计移除的广告片段数量
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // 只过滤#EXT-X-DISCONTINUITY标识
+      // 🎯 增强功能1: 检测行业标准广告标记（SCTE-35系列）
+      // 使用 line.includes() 保持与原逻辑一致，兼容各种格式
+      if (line.includes('#EXT-X-CUE-OUT') ||
+          (line.includes('#EXT-X-DATERANGE') && line.includes('SCTE35')) ||
+          line.includes('#EXT-X-SCTE35') ||
+          line.includes('#EXT-OATCLS-SCTE35')) {
+        inAdBlock = true;
+        adSegmentCount++;
+        continue; // 跳过广告开始标记
+      }
+
+      // 🎯 增强功能2: 检测广告结束标记
+      if (line.includes('#EXT-X-CUE-IN')) {
+        inAdBlock = false;
+        continue; // 跳过广告结束标记
+      }
+
+      // 🎯 增强功能3: 如果在广告区块内，跳过所有内容
+      if (inAdBlock) {
+        continue;
+      }
+
+      // ✅ 原始逻辑保留: 过滤#EXT-X-DISCONTINUITY标识
       if (!line.includes('#EXT-X-DISCONTINUITY')) {
         filteredLines.push(line);
       }
+    }
+
+    // 输出统计信息
+    if (adSegmentCount > 0) {
+      console.log(`✅ M3U8广告过滤: 移除 ${adSegmentCount} 个广告片段`);
     }
 
     return filteredLines.join('\n');
