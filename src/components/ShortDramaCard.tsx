@@ -67,7 +67,7 @@ function ShortDramaCard({
     return unsubscribe;
   }, [source, id]);
 
-  // 获取真实集数（带统一缓存）
+  // 获取真实集数（优先使用备用API）
   useEffect(() => {
     const fetchEpisodeCount = async () => {
       const cacheKey = getCacheKey('episodes', { id: drama.id });
@@ -85,8 +85,27 @@ function ShortDramaCard({
       }
 
       try {
+        // 优先尝试使用备用API（通过剧名获取集数，更快更可靠）
+        const episodeCountResponse = await fetch(
+          `/api/shortdrama/episode-count?name=${encodeURIComponent(drama.name)}`
+        );
+
+        if (episodeCountResponse.ok) {
+          const episodeCountData = await episodeCountResponse.json();
+          if (episodeCountData.episodeCount > 1) {
+            setRealEpisodeCount(episodeCountData.episodeCount);
+            setShowEpisodeCount(true);
+            // 使用统一缓存系统缓存结果
+            await setCache(cacheKey, episodeCountData.episodeCount, SHORTDRAMA_CACHE_EXPIRE.episodes);
+            return; // 成功获取，直接返回
+          }
+        }
+
+        // 备用API失败，fallback到主API解析方式
+        console.log('备用API获取集数失败，尝试主API...');
+
         // 先尝试第1集（episode=0）
-        let response = await fetch(`/api/shortdrama/parse?id=${drama.id}&episode=0`);
+        let response = await fetch(`/api/shortdrama/parse?id=${drama.id}&episode=0&name=${encodeURIComponent(drama.name)}`);
         let result = null;
 
         if (response.ok) {
@@ -95,7 +114,7 @@ function ShortDramaCard({
 
         // 如果第1集失败，尝试第2集（episode=1）
         if (!result || !result.totalEpisodes) {
-          response = await fetch(`/api/shortdrama/parse?id=${drama.id}&episode=1`);
+          response = await fetch(`/api/shortdrama/parse?id=${drama.id}&episode=1&name=${encodeURIComponent(drama.name)}`);
           if (response.ok) {
             result = await response.json();
           }
@@ -123,7 +142,7 @@ function ShortDramaCard({
     if (drama.episode_count === 1) {
       fetchEpisodeCount();
     }
-  }, [drama.id, drama.episode_count]);
+  }, [drama.id, drama.episode_count, drama.name]);
 
   // 处理收藏切换
   const handleToggleFavorite = useCallback(
@@ -218,11 +237,11 @@ function ShortDramaCard({
             </div>
           )}
 
-          {/* 评分 */}
-          {drama.score > 0 && (
-            <div className="absolute top-2 right-2 flex items-center rounded bg-yellow-500 px-2 py-1 text-xs text-white">
-              <Star className="h-3 w-3 mr-1" fill="currentColor" />
-              {formatScore(drama.score)}
+          {/* 评分 - 使用vote_average字段 */}
+          {drama.vote_average && drama.vote_average > 0 && (
+            <div className="absolute top-2 right-2 flex items-center rounded-lg bg-gradient-to-br from-yellow-400 to-orange-500 px-2.5 py-1.5 text-xs font-bold text-white shadow-lg backdrop-blur-sm ring-2 ring-white/30 transition-all duration-300 group-hover:scale-110">
+              <Star className="h-3 w-3 mr-1 fill-current" />
+              {drama.vote_average.toFixed(1)}
             </div>
           )}
 
@@ -247,6 +266,18 @@ function ShortDramaCard({
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-blue-600 group-hover:to-purple-600 dark:group-hover:from-blue-400 dark:group-hover:to-purple-400 transition-all duration-300">
             {drama.name}
           </h3>
+
+          {/* 演员信息 */}
+          {drama.author && (
+            <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200/50 dark:border-blue-700/50">
+                <svg className="w-3 h-3 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                </svg>
+                <span className="text-blue-700 dark:text-blue-300 font-medium line-clamp-1">{drama.author}</span>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-1.5 text-xs">
             <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200/50 dark:border-green-700/50">
