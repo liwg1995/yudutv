@@ -4,9 +4,11 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
-import { Heart, ChevronUp } from 'lucide-react';
+import { Heart, ChevronUp, Download } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 
+import { useDownload } from '@/contexts/DownloadContext';
 import EpisodeSelector from '@/components/EpisodeSelector';
 import NetDiskSearchResults from '@/components/NetDiskSearchResults';
 import PageLayout from '@/components/PageLayout';
@@ -48,6 +50,7 @@ interface WakeLockSentinel {
 function PlayPageClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { createTask, setShowDownloadPanel } = useDownload();
 
   // -----------------------------------------------------------------------------
   // 状态变量（State）
@@ -116,6 +119,22 @@ function PlayPageClient() {
   });
   const blockAdEnabledRef = useRef(blockAdEnabled);
 
+  // 外部播放器去广告开关（独立于内置播放器）
+  const [externalPlayerAdBlock, setExternalPlayerAdBlock] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const v = localStorage.getItem('external_player_adblock');
+      if (v !== null) return v === 'true';
+    }
+    return true; // 默认开启
+  });
+
+  // 保存externalPlayerAdBlock到localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('external_player_adblock', String(externalPlayerAdBlock));
+    }
+  }, [externalPlayerAdBlock]);
+
   // 外部弹幕开关（从 localStorage 继承，默认全部关闭）
   const [externalDanmuEnabled, setExternalDanmuEnabled] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -126,6 +145,65 @@ function PlayPageClient() {
   });
   const externalDanmuEnabledRef = useRef(externalDanmuEnabled);
 
+  // Anime4K超分相关状态
+  const [webGPUSupported, setWebGPUSupported] = useState<boolean>(false);
+  const [anime4kEnabled, setAnime4kEnabled] = useState<boolean>(false);
+  const [anime4kMode, setAnime4kMode] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const v = localStorage.getItem('anime4k_mode');
+      if (v !== null) return v;
+    }
+    return 'ModeA';
+  });
+  const [anime4kScale, setAnime4kScale] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const v = localStorage.getItem('anime4k_scale');
+      if (v !== null) return parseFloat(v);
+    }
+    return 2.0;
+  });
+  const anime4kRef = useRef<any>(null);
+  const anime4kEnabledRef = useRef(anime4kEnabled);
+  const anime4kModeRef = useRef(anime4kMode);
+  const anime4kScaleRef = useRef(anime4kScale);
+  useEffect(() => {
+    anime4kEnabledRef.current = anime4kEnabled;
+    anime4kModeRef.current = anime4kMode;
+    anime4kScaleRef.current = anime4kScale;
+  }, [anime4kEnabled, anime4kMode, anime4kScale]);
+
+  // 获取 HLS 缓冲配置（根据用户设置的模式）
+  const getHlsBufferConfig = () => {
+    const mode =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('playerBufferMode') || 'standard'
+        : 'standard';
+
+    switch (mode) {
+      case 'enhanced':
+        // 增强模式：1.5 倍缓冲
+        return {
+          maxBufferLength: 45, // 45s（默认30s × 1.5）
+          backBufferLength: 45,
+          maxBufferSize: 90 * 1000 * 1000, // 90MB
+        };
+      case 'max':
+        // 强力模式：3 倍缓冲
+        return {
+          maxBufferLength: 90, // 90s（默认30s × 3）
+          backBufferLength: 60,
+          maxBufferSize: 180 * 1000 * 1000, // 180MB
+        };
+      case 'standard':
+      default:
+        // 默认模式
+        return {
+          maxBufferLength: 30,
+          backBufferLength: 30,
+          maxBufferSize: 60 * 1000 * 1000, // 60MB
+        };
+    }
+  };
 
   // 视频基本信息
   const [videoTitle, setVideoTitle] = useState(searchParams.get('title') || '');
@@ -193,6 +271,34 @@ function PlayPageClient() {
     videoDoubanId,
     availableSources,
   ]);
+
+  // WebGPU支持检测
+  useEffect(() => {
+    const checkWebGPUSupport = async () => {
+      if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
+        setWebGPUSupported(false);
+        console.log('WebGPU不支持：浏览器不支持WebGPU API');
+        return;
+      }
+
+      try {
+        const adapter = await (navigator as any).gpu.requestAdapter();
+        if (!adapter) {
+          setWebGPUSupported(false);
+          console.log('WebGPU不支持：无法获取GPU适配器');
+          return;
+        }
+
+        setWebGPUSupported(true);
+        console.log('WebGPU支持检测：✅ 支持');
+      } catch (err) {
+        setWebGPUSupported(false);
+        console.log('WebGPU不支持：检测失败', err);
+      }
+    };
+
+    checkWebGPUSupport();
+  }, []);
 
   // 加载详情（豆瓣或bangumi）
   useEffect(() => {
@@ -1167,12 +1273,18 @@ function PlayPageClient() {
             setVideoUrl(newUrl);
           }
         } else {
-          setError('短剧解析失败');
+          // 读取API返回的错误信息
+          try {
+            const errorData = await response.json();
+            setError(errorData.error || '短剧解析失败');
+          } catch {
+            setError('短剧解析失败');
+          }
           setVideoUrl('');
         }
       } catch (err) {
         console.error('短剧URL解析失败:', err);
-        setError('短剧解析失败');
+        setError('播放失败，请稍后再试');
         setVideoUrl('');
       }
     } else {
@@ -1294,8 +1406,11 @@ function PlayPageClient() {
     }
   };
 
-  // 清理播放器资源的统一函数（添加更完善的清理逻辑）
-  const cleanupPlayer = () => {
+  // 清理播放器资源的统一函数
+  const cleanupPlayer = async () => {
+    // 先清理Anime4K，避免GPU纹理错误
+    await cleanupAnime4K();
+
     // 🚀 新增：清理弹幕优化相关的定时器
     if (danmuOperationTimeoutRef.current) {
       clearTimeout(danmuOperationTimeoutRef.current);
@@ -1344,6 +1459,266 @@ function PlayPageClient() {
         // 即使出错也要确保引用被清空
         artPlayerRef.current = null;
       }
+    }
+  };
+
+  // 初始化Anime4K超分
+  const initAnime4K = async () => {
+    if (!artPlayerRef.current?.video) return;
+
+    let frameRequestId: number | null = null;
+    let outputCanvas: HTMLCanvasElement | null = null;
+
+    try {
+      if (anime4kRef.current) {
+        anime4kRef.current.controller?.stop?.();
+        anime4kRef.current = null;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      const video = artPlayerRef.current.video as HTMLVideoElement;
+
+      if (!video.videoWidth || !video.videoHeight) {
+        console.warn('视频尺寸未就绪，等待loadedmetadata事件');
+        await new Promise<void>((resolve) => {
+          const handler = () => {
+            video.removeEventListener('loadedmetadata', handler);
+            resolve();
+          };
+          video.addEventListener('loadedmetadata', handler);
+          if (video.videoWidth && video.videoHeight) {
+            video.removeEventListener('loadedmetadata', handler);
+            resolve();
+          }
+        });
+      }
+
+      if (!video.videoWidth || !video.videoHeight) {
+        throw new Error('无法获取视频尺寸');
+      }
+
+      const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+      outputCanvas = document.createElement('canvas');
+      const container = artPlayerRef.current.template.$video.parentElement;
+
+      const scale = anime4kScaleRef.current;
+      outputCanvas.width = Math.floor(video.videoWidth * scale);
+      outputCanvas.height = Math.floor(video.videoHeight * scale);
+
+      if (!outputCanvas.width || !outputCanvas.height || !isFinite(outputCanvas.width) || !isFinite(outputCanvas.height)) {
+        throw new Error(`outputCanvas尺寸无效: ${outputCanvas.width}x${outputCanvas.height}`);
+      }
+
+      outputCanvas.style.position = 'absolute';
+      outputCanvas.style.top = '0';
+      outputCanvas.style.left = '0';
+      outputCanvas.style.width = '100%';
+      outputCanvas.style.height = '100%';
+      outputCanvas.style.objectFit = 'contain';
+      outputCanvas.style.cursor = 'pointer';
+      outputCanvas.style.zIndex = '1';
+      outputCanvas.style.backgroundColor = 'transparent';
+
+      let sourceCanvas: HTMLCanvasElement | null = null;
+      let sourceCtx: CanvasRenderingContext2D | null = null;
+
+      if (isFirefox) {
+        sourceCanvas = document.createElement('canvas');
+        sourceCanvas.width = Math.floor(video.videoWidth);
+        sourceCanvas.height = Math.floor(video.videoHeight);
+
+        if (!sourceCanvas.width || !sourceCanvas.height) {
+          throw new Error(`sourceCanvas尺寸无效: ${sourceCanvas.width}x${sourceCanvas.height}`);
+        }
+
+        sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true, alpha: false });
+        if (!sourceCtx) throw new Error('无法创建2D上下文');
+
+        if (video.readyState >= video.HAVE_CURRENT_DATA) {
+          sourceCtx.drawImage(video, 0, 0, sourceCanvas.width, sourceCanvas.height);
+        }
+      }
+
+      const handleCanvasClick = () => {
+        if (artPlayerRef.current) artPlayerRef.current.toggle();
+      };
+      outputCanvas.addEventListener('click', handleCanvasClick);
+
+      const handleCanvasDblClick = () => {
+        if (artPlayerRef.current) artPlayerRef.current.fullscreen = !artPlayerRef.current.fullscreen;
+      };
+      outputCanvas.addEventListener('dblclick', handleCanvasDblClick);
+
+      video.style.opacity = '0';
+      video.style.pointerEvents = 'none';
+      video.style.position = 'absolute';
+      video.style.zIndex = '-1';
+
+      container.insertBefore(outputCanvas, video);
+
+      if (isFirefox && sourceCtx && sourceCanvas) {
+        const captureVideoFrame = () => {
+          if (sourceCtx && sourceCanvas && video.readyState >= video.HAVE_CURRENT_DATA) {
+            sourceCtx.drawImage(video, 0, 0, sourceCanvas.width, sourceCanvas.height);
+          }
+          frameRequestId = requestAnimationFrame(captureVideoFrame);
+        };
+        captureVideoFrame();
+      }
+
+      const { render: anime4kRender, ModeA, ModeB, ModeC, ModeAA, ModeBB, ModeCA } = await import('anime4k-webgpu');
+
+      let ModeClass: any;
+      const modeName = anime4kModeRef.current;
+
+      switch (modeName) {
+        case 'ModeA': ModeClass = ModeA; break;
+        case 'ModeB': ModeClass = ModeB; break;
+        case 'ModeC': ModeClass = ModeC; break;
+        case 'ModeAA': ModeClass = ModeAA; break;
+        case 'ModeBB': ModeClass = ModeBB; break;
+        case 'ModeCA': ModeClass = ModeCA; break;
+        default: ModeClass = ModeA;
+      }
+
+      const renderConfig: any = {
+        video: isFirefox ? sourceCanvas : video,
+        canvas: outputCanvas,
+        pipelineBuilder: (device: GPUDevice, inputTexture: GPUTexture) => {
+          if (!outputCanvas) throw new Error('outputCanvas is null');
+          const mode = new ModeClass({
+            device,
+            inputTexture,
+            nativeDimensions: { width: Math.floor(video.videoWidth), height: Math.floor(video.videoHeight) },
+            targetDimensions: { width: Math.floor(outputCanvas.width), height: Math.floor(outputCanvas.height) },
+          });
+          return [mode];
+        },
+      };
+
+      const controller = await anime4kRender(renderConfig);
+
+      anime4kRef.current = {
+        controller,
+        canvas: outputCanvas,
+        sourceCanvas: isFirefox ? sourceCanvas : null,
+        frameRequestId: isFirefox ? frameRequestId : null,
+        handleCanvasClick,
+        handleCanvasDblClick,
+      };
+
+      console.log('Anime4K超分已启用，模式:', anime4kModeRef.current, '倍数:', scale);
+      if (artPlayerRef.current) {
+        artPlayerRef.current.notice.show = `超分已启用 (${anime4kModeRef.current}, ${scale}x)`;
+      }
+    } catch (err) {
+      console.error('初始化Anime4K失败:', err);
+      if (artPlayerRef.current) {
+        artPlayerRef.current.notice.show = '超分启用失败：' + (err instanceof Error ? err.message : '未知错误');
+      }
+
+      if (frameRequestId) cancelAnimationFrame(frameRequestId);
+      if (outputCanvas && outputCanvas.parentNode) {
+        outputCanvas.parentNode.removeChild(outputCanvas);
+      }
+
+      if (artPlayerRef.current?.video) {
+        artPlayerRef.current.video.style.opacity = '1';
+        artPlayerRef.current.video.style.pointerEvents = 'auto';
+        artPlayerRef.current.video.style.position = '';
+        artPlayerRef.current.video.style.zIndex = '';
+      }
+    }
+  };
+
+  // 清理Anime4K
+  const cleanupAnime4K = async () => {
+    if (anime4kRef.current) {
+      try {
+        if (anime4kRef.current.frameRequestId) {
+          cancelAnimationFrame(anime4kRef.current.frameRequestId);
+        }
+
+        anime4kRef.current.controller?.stop?.();
+
+        if (anime4kRef.current.canvas) {
+          if (anime4kRef.current.handleCanvasClick) {
+            anime4kRef.current.canvas.removeEventListener('click', anime4kRef.current.handleCanvasClick);
+          }
+          if (anime4kRef.current.handleCanvasDblClick) {
+            anime4kRef.current.canvas.removeEventListener('dblclick', anime4kRef.current.handleCanvasDblClick);
+          }
+        }
+
+        if (anime4kRef.current.canvas && anime4kRef.current.canvas.parentNode) {
+          anime4kRef.current.canvas.parentNode.removeChild(anime4kRef.current.canvas);
+        }
+
+        if (anime4kRef.current.sourceCanvas) {
+          const ctx = anime4kRef.current.sourceCanvas.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, anime4kRef.current.sourceCanvas.width, anime4kRef.current.sourceCanvas.height);
+          }
+        }
+
+        anime4kRef.current = null;
+
+        if (artPlayerRef.current?.video) {
+          artPlayerRef.current.video.style.opacity = '1';
+          artPlayerRef.current.video.style.pointerEvents = 'auto';
+          artPlayerRef.current.video.style.position = '';
+          artPlayerRef.current.video.style.zIndex = '';
+        }
+
+        console.log('Anime4K已清理');
+      } catch (err) {
+        console.warn('清理Anime4K时出错:', err);
+      }
+    }
+  };
+
+  // 切换Anime4K状态
+  const toggleAnime4K = async (enabled: boolean) => {
+    try {
+      if (enabled) {
+        await initAnime4K();
+      } else {
+        await cleanupAnime4K();
+      }
+      setAnime4kEnabled(enabled);
+      localStorage.setItem('enable_anime4k', String(enabled));
+    } catch (err) {
+      console.error('切换超分状态失败:', err);
+    }
+  };
+
+  // 更改Anime4K模式
+  const changeAnime4KMode = async (mode: string) => {
+    try {
+      setAnime4kMode(mode);
+      localStorage.setItem('anime4k_mode', mode);
+
+      if (anime4kEnabledRef.current) {
+        await cleanupAnime4K();
+        await initAnime4K();
+      }
+    } catch (err) {
+      console.error('更改超分模式失败:', err);
+    }
+  };
+
+  // 更改Anime4K分辨率倍数
+  const changeAnime4KScale = async (scale: number) => {
+    try {
+      setAnime4kScale(scale);
+      localStorage.setItem('anime4k_scale', scale.toString());
+
+      if (anime4kEnabledRef.current) {
+        await cleanupAnime4K();
+        await initAnime4K();
+      }
+    } catch (err) {
+      console.error('更改超分倍数失败:', err);
     }
   };
 
@@ -2542,7 +2917,7 @@ function PlayPageClient() {
     const handleBeforeUnload = () => {
       saveCurrentPlayProgress();
       releaseWakeLock();
-      cleanupPlayer();
+      cleanupPlayer(); // 不await，让它异步执行
     };
 
     // 页面可见性变化时保存播放进度和释放 Wake Lock
@@ -2930,11 +3305,11 @@ function PlayPageClient() {
         // 重置集数切换标识
         isEpisodeChangingRef.current = false;
         // 如果switch失败，清理播放器并重新创建
-        cleanupPlayer();
+        await cleanupPlayer();
       }
     }
     if (artPlayerRef.current) {
-      cleanupPlayer();
+      await cleanupPlayer();
     }
 
     // 确保 DOM 容器完全清空，避免多实例冲突
@@ -3005,27 +3380,30 @@ function PlayPageClient() {
             
             // 在函数内部重新检测iOS13+设备
             const localIsIOS13 = isIOS13;
-            
+
+            // 获取用户的缓冲模式配置
+            const bufferConfig = getHlsBufferConfig();
+
             // 🚀 根据 HLS.js 官方源码的最佳实践配置
             const hls = new Hls({
               debug: false,
               enableWorker: true,
               // 参考 HLS.js config.ts：移动设备关闭低延迟模式以节省资源
               lowLatencyMode: !isMobile,
-              
-              // 🎯 官方推荐的缓冲策略 - iOS13+ 特别优化
-              /* 缓冲长度配置 - 参考 hlsDefaultConfig */
-              maxBufferLength: isMobile 
-                ? (localIsIOS13 ? 8 : isIOS ? 10 : 15)  // iOS13+: 8s, iOS: 10s, Android: 15s
-                : 30, // 桌面默认30s
-              backBufferLength: isMobile 
-                ? (localIsIOS13 ? 5 : isIOS ? 8 : 10)   // iOS13+更保守
-                : Infinity, // 桌面使用无限回退缓冲
 
-              /* 缓冲大小配置 - 基于官方 maxBufferSize */
-              maxBufferSize: isMobile 
+              // 🎯 官方推荐的缓冲策略 - iOS13+ 特别优化
+              /* 缓冲长度配置 - 参考 hlsDefaultConfig - 桌面设备应用用户配置 */
+              maxBufferLength: isMobile
+                ? (localIsIOS13 ? 8 : isIOS ? 10 : 15)  // iOS13+: 8s, iOS: 10s, Android: 15s
+                : bufferConfig.maxBufferLength, // 桌面使用用户配置
+              backBufferLength: isMobile
+                ? (localIsIOS13 ? 5 : isIOS ? 8 : 10)   // iOS13+更保守
+                : bufferConfig.backBufferLength, // 桌面使用用户配置
+
+              /* 缓冲大小配置 - 基于官方 maxBufferSize - 桌面设备应用用户配置 */
+              maxBufferSize: isMobile
                 ? (localIsIOS13 ? 20 * 1000 * 1000 : isIOS ? 30 * 1000 * 1000 : 40 * 1000 * 1000) // iOS13+: 20MB, iOS: 30MB, Android: 40MB
-                : 60 * 1000 * 1000, // 桌面: 60MB (官方默认)
+                : bufferConfig.maxBufferSize, // 桌面使用用户配置
 
               /* 网络加载优化 - 参考 defaultLoadPolicy */
               maxLoadingDelay: isMobile ? (localIsIOS13 ? 2 : 3) : 4, // iOS13+设备更快超时
@@ -3290,6 +3668,48 @@ function PlayPageClient() {
               ];
             })(),
           },
+          ...(webGPUSupported ? [
+            {
+              name: 'Anime4K超分',
+              html: 'Anime4K超分',
+              switch: anime4kEnabledRef.current,
+              onSwitch: async function (item: any) {
+                const newVal = !item.switch;
+                await toggleAnime4K(newVal);
+                return newVal;
+              },
+            },
+            {
+              name: '超分模式',
+              html: '超分模式',
+              selector: [
+                { html: 'ModeA (快速)', value: 'ModeA', default: anime4kModeRef.current === 'ModeA' },
+                { html: 'ModeB (标准)', value: 'ModeB', default: anime4kModeRef.current === 'ModeB' },
+                { html: 'ModeC (高质)', value: 'ModeC', default: anime4kModeRef.current === 'ModeC' },
+                { html: 'ModeAA (极速)', value: 'ModeAA', default: anime4kModeRef.current === 'ModeAA' },
+                { html: 'ModeBB (平衡)', value: 'ModeBB', default: anime4kModeRef.current === 'ModeBB' },
+                { html: 'ModeCA (优质)', value: 'ModeCA', default: anime4kModeRef.current === 'ModeCA' },
+              ],
+              onSelect: async function (item: any) {
+                await changeAnime4KMode(item.value);
+                return item.html;
+              },
+            },
+            {
+              name: '超分倍数',
+              html: '超分倍数',
+              selector: [
+                { html: '1.5x', value: '1.5', default: anime4kScaleRef.current === 1.5 },
+                { html: '2.0x', value: '2.0', default: anime4kScaleRef.current === 2.0 },
+                { html: '3.0x', value: '3.0', default: anime4kScaleRef.current === 3.0 },
+                { html: '4.0x', value: '4.0', default: anime4kScaleRef.current === 4.0 },
+              ],
+              onSelect: async function (item: any) {
+                await changeAnime4KScale(parseFloat(item.value));
+                return item.html;
+              },
+            },
+          ] : []),
         ],
         // 控制栏配置
         controls: [
@@ -4302,6 +4722,9 @@ function PlayPageClient() {
       // 释放 Wake Lock
       releaseWakeLock();
 
+      // 清理Anime4K
+      cleanupAnime4K();
+
       // 销毁播放器实例
       cleanupPlayer();
     };
@@ -4779,6 +5202,202 @@ function PlayPageClient() {
                         )}
                       </div>
                     </button>
+
+                    {/* 下载按钮 */}
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        // 获取当前播放URL
+                        const currentUrl = videoUrl;
+                        if (!currentUrl) {
+                          alert('无法获取视频地址');
+                          return;
+                        }
+
+                        // 检查是否是M3U8
+                        if (!currentUrl.includes('.m3u8')) {
+                          alert('仅支持M3U8格式视频下载');
+                          return;
+                        }
+
+                        try {
+                          // 生成下载标题：视频名_第X集
+                          const episodeName = detail?.episodes && detail.episodes.length > 0
+                            ? `第${currentEpisodeIndex + 1}集`
+                            : '';
+                          const downloadTitle = `${videoTitle || '视频'}${episodeName ? `_${episodeName}` : ''}`;
+
+                          // 创建下载任务
+                          await createTask(currentUrl, downloadTitle, 'TS');
+                        } catch (error) {
+                          console.error('创建下载任务失败:', error);
+                          alert('创建下载任务失败: ' + (error as Error).message);
+                        }
+                      }}
+                      className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                    >
+                      <div className='absolute inset-0 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                      <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                        <Download className='h-4 w-4' />
+                        <span>下载</span>
+                      </div>
+                    </button>
+
+                    {/* 查看下载按钮 */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowDownloadPanel(true);
+                      }}
+                      className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                    >
+                      <div className='absolute inset-0 bg-gradient-to-r from-purple-400 to-indigo-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                      <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                        📥
+                        <span>下载管理</span>
+                      </div>
+                    </button>
+
+                    {/* 外部播放器按钮组 */}
+                    {videoUrl && (
+                      <>
+                        {/* PotPlayer */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const proxyUrl = externalPlayerAdBlock
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              : videoUrl;
+                            window.open(`potplayer://${proxyUrl}`, '_blank');
+                          }}
+                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                          title='PotPlayer播放'
+                        >
+                          <div className='absolute inset-0 bg-gradient-to-r from-orange-400 to-red-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                            <Image src='/players/potplayer.png' alt='PotPlayer' width={16} height={16} className='w-4 h-4' />
+                            <span>PotPlayer</span>
+                          </div>
+                        </button>
+
+                        {/* VLC */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const proxyUrl = externalPlayerAdBlock
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              : videoUrl;
+                            window.open(`vlc://${proxyUrl}`, '_blank');
+                          }}
+                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                          title='VLC播放'
+                        >
+                          <div className='absolute inset-0 bg-gradient-to-r from-amber-400 to-yellow-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                            <Image src='/players/vlc.png' alt='VLC' width={16} height={16} className='w-4 h-4' />
+                            <span>VLC</span>
+                          </div>
+                        </button>
+
+                        {/* MPV */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const proxyUrl = externalPlayerAdBlock
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              : videoUrl;
+                            window.open(`mpv://${proxyUrl}`, '_blank');
+                          }}
+                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                          title='MPV播放'
+                        >
+                          <div className='absolute inset-0 bg-gradient-to-r from-gray-400 to-slate-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                            <Image src='/players/mpv.png' alt='MPV' width={16} height={16} className='w-4 h-4' />
+                            <span>MPV</span>
+                          </div>
+                        </button>
+
+                        {/* MX Player (Android) */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const proxyUrl = externalPlayerAdBlock
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              : videoUrl;
+                            const title = videoTitle || '视频';
+                            window.open(`intent://${proxyUrl}#Intent;package=com.mxtech.videoplayer.ad;S.title=${encodeURIComponent(title)};end`, '_blank');
+                          }}
+                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                          title='MX Player播放'
+                        >
+                          <div className='absolute inset-0 bg-gradient-to-r from-teal-400 to-cyan-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                            <Image src='/players/mxplayer.png' alt='MX Player' width={16} height={16} className='w-4 h-4' />
+                            <span>MX Player</span>
+                          </div>
+                        </button>
+
+                        {/* nPlayer (iOS) */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const proxyUrl = externalPlayerAdBlock
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              : videoUrl;
+                            window.open(`nplayer-${proxyUrl}`, '_blank');
+                          }}
+                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                          title='nPlayer播放'
+                        >
+                          <div className='absolute inset-0 bg-gradient-to-r from-rose-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                            <Image src='/players/nplayer.png' alt='nPlayer' width={16} height={16} className='w-4 h-4' />
+                            <span>nPlayer</span>
+                          </div>
+                        </button>
+
+                        {/* IINA (macOS) */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const proxyUrl = externalPlayerAdBlock
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              : videoUrl;
+                            window.open(`iina://weblink?url=${encodeURIComponent(proxyUrl)}`, '_blank');
+                          }}
+                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                          title='IINA播放'
+                        >
+                          <div className='absolute inset-0 bg-gradient-to-r from-indigo-400 to-violet-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
+                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
+                            <Image src='/players/iina.png' alt='IINA' width={16} height={16} className='w-4 h-4' />
+                            <span>IINA</span>
+                          </div>
+                        </button>
+
+                        {/* 外部播放器去广告开关 */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExternalPlayerAdBlock(!externalPlayerAdBlock);
+                          }}
+                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
+                          title={externalPlayerAdBlock ? '外部播放器去广告已开启' : '外部播放器去广告已关闭'}
+                        >
+                          <div className={`absolute inset-0 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300 ${externalPlayerAdBlock ? 'bg-gradient-to-r from-green-400 to-emerald-400' : 'bg-gradient-to-r from-red-400 to-rose-400'}`}></div>
+                          <div className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300 ${externalPlayerAdBlock ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white' : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'}`}>
+                            {externalPlayerAdBlock ? '🛡️' : '⚠️'}
+                            <span>外部{externalPlayerAdBlock ? '去广告' : '直连'}</span>
+                          </div>
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
