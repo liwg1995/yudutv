@@ -5266,7 +5266,7 @@ function PlayPageClient() {
                           onClick={(e) => {
                             e.stopPropagation();
                             const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
                               : videoUrl;
                             window.open(`potplayer://${proxyUrl}`, '_blank');
                           }}
@@ -5286,7 +5286,7 @@ function PlayPageClient() {
                             e.stopPropagation();
                             e.preventDefault();
                             const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
                               : videoUrl;
                             window.open(`vlc://${proxyUrl}`, '_blank');
                           }}
@@ -5306,7 +5306,7 @@ function PlayPageClient() {
                             e.stopPropagation();
                             e.preventDefault();
                             const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
                               : videoUrl;
                             window.open(`mpv://${proxyUrl}`, '_blank');
                           }}
@@ -5326,7 +5326,7 @@ function PlayPageClient() {
                             e.stopPropagation();
                             e.preventDefault();
                             const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
                               : videoUrl;
                             const title = videoTitle || '视频';
                             window.open(`intent://${proxyUrl}#Intent;package=com.mxtech.videoplayer.ad;S.title=${encodeURIComponent(title)};end`, '_blank');
@@ -5347,7 +5347,7 @@ function PlayPageClient() {
                             e.stopPropagation();
                             e.preventDefault();
                             const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
                               : videoUrl;
                             window.open(`nplayer-${proxyUrl}`, '_blank');
                           }}
@@ -5367,7 +5367,7 @@ function PlayPageClient() {
                             e.stopPropagation();
                             e.preventDefault();
                             const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${currentSource}`
+                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
                               : videoUrl;
                             window.open(`iina://weblink?url=${encodeURIComponent(proxyUrl)}`, '_blank');
                           }}

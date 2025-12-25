@@ -66,18 +66,38 @@ export async function GET(request: Request) {
 /**
  * 默认去广告规则
  */
-function filterAdsFromM3U8Default(source: string, m3u8Content: string): string {
+function filterAdsFromM3U8Default(type: string, m3u8Content: string): string {
   if (!m3u8Content) return '';
 
   // 按行分割M3U8内容
   const lines = m3u8Content.split('\n');
   const filteredLines = [];
 
+  let nextdelete = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
+    if (nextdelete) {
+      nextdelete = false;
+      continue;
+    }
+
     // 只过滤#EXT-X-DISCONTINUITY标识
     if (!line.includes('#EXT-X-DISCONTINUITY')) {
+      if (
+        type === 'ruyi' &&
+        (line.includes('EXTINF:5.640000') ||
+          line.includes('EXTINF:2.960000') ||
+          line.includes('EXTINF:3.480000') ||
+          line.includes('EXTINF:4.000000') ||
+          line.includes('EXTINF:0.960000') ||
+          line.includes('EXTINF:10.000000') ||
+          line.includes('EXTINF:1.266667'))
+      ) {
+        nextdelete = true;
+        continue;
+      }
+
       filteredLines.push(line);
     }
   }
@@ -86,79 +106,83 @@ function filterAdsFromM3U8Default(source: string, m3u8Content: string): string {
 }
 
 /**
- * 处理 m3u8 中的相对链接
- * 将相对链接转换为绝对链接
+ * 将 m3u8 中的相对链接转换为绝对链接，并将子 m3u8 链接转为代理链接
  */
-function resolveM3u8Links(
-  m3u8Content: string,
-  m3u8Url: string,
-  source: string,
-  origin: string
-): string {
+function resolveM3u8Links(m3u8Content: string, baseUrl: string, source: string, proxyOrigin: string): string {
   const lines = m3u8Content.split('\n');
-  const resolvedLines: string[] = [];
+  const resolvedLines = [];
 
-  // 获取 m3u8 的基础 URL（用于解析相对路径）
-  const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+  // 解析基础URL
+  const base = new URL(baseUrl);
+  const baseDir = base.href.substring(0, base.href.lastIndexOf('/') + 1);
 
-  for (const line of lines) {
-    const trimmedLine = line.trim();
+  let isNextLineUrl = false;
 
-    // 处理 URI 属性（如 EXT-X-KEY, EXT-X-MAP 等）
-    if (trimmedLine.startsWith('#EXT-X-KEY:') || trimmedLine.startsWith('#EXT-X-MAP:')) {
-      const uriMatch = trimmedLine.match(/URI="([^"]+)"/);
-      if (uriMatch) {
-        const uri = uriMatch[1];
-        const absoluteUri = resolveUrl(baseUrl, uri);
-        resolvedLines.push(trimmedLine.replace(uri, absoluteUri));
-        continue;
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    // 处理 EXT-X-KEY 标签中的 URI
+    if (line.startsWith('#EXT-X-KEY:')) {
+      // 提取 URI 部分
+      const uriMatch = line.match(/URI="([^"]+)"/);
+      if (uriMatch && uriMatch[1]) {
+        let keyUri = uriMatch[1];
+
+        // 转换为绝对路径
+        if (!keyUri.startsWith('http://') && !keyUri.startsWith('https://')) {
+          if (keyUri.startsWith('/')) {
+            keyUri = `${base.protocol}//${base.host}${keyUri}`;
+          } else {
+            keyUri = new URL(keyUri, baseDir).href;
+          }
+
+          // 替换原来的 URI
+          line = line.replace(/URI="[^"]+"/, `URI="${keyUri}"`);
+        }
       }
+      resolvedLines.push(line);
+      continue;
     }
 
-    // 处理嵌套的 m3u8 文件（多码率）
-    if (trimmedLine && !trimmedLine.startsWith('#')) {
-      // 可能是 ts 片段或嵌套 m3u8
-      if (trimmedLine.endsWith('.m3u8') || trimmedLine.includes('.m3u8?')) {
-        // 嵌套 m3u8，需要通过代理
-        const absoluteUrl = resolveUrl(baseUrl, trimmedLine);
-        const proxyUrl = `${origin}/api/proxy-m3u8?url=${encodeURIComponent(absoluteUrl)}&source=${encodeURIComponent(source)}`;
-        resolvedLines.push(proxyUrl);
-      } else {
-        // ts 片段，转换为绝对路径
-        const absoluteUrl = resolveUrl(baseUrl, trimmedLine);
-        resolvedLines.push(absoluteUrl);
+    // 注释行直接保留
+    if (line.startsWith('#')) {
+      resolvedLines.push(line);
+      // 检查是否是 EXT-X-STREAM-INF，下一行将是子 m3u8
+      if (line.startsWith('#EXT-X-STREAM-INF:')) {
+        isNextLineUrl = true;
       }
       continue;
     }
 
-    // 其他行保持不变
-    resolvedLines.push(line);
+    // 空行直接保留
+    if (line.trim() === '') {
+      resolvedLines.push(line);
+      continue;
+    }
+
+    // 处理 URL 行
+    let url = line.trim();
+
+    // 1. 先转换为绝对 URL
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      if (url.startsWith('/')) {
+        // 以 / 开头，相对于域名根目录
+        url = `${base.protocol}//${base.host}${url}`;
+      } else {
+        // 相对于当前目录
+        url = new URL(url, baseDir).href;
+      }
+    }
+
+    // 2. 检查是否是子 m3u8，如果是，转换为代理链接
+    const isM3u8 = url.includes('.m3u8') || isNextLineUrl;
+    if (isM3u8) {
+      url = `${proxyOrigin}/api/proxy-m3u8?url=${encodeURIComponent(url)}${source ? `&source=${encodeURIComponent(source)}` : ''}`;
+    }
+
+    resolvedLines.push(url);
+    isNextLineUrl = false;
   }
 
   return resolvedLines.join('\n');
-}
-
-/**
- * 将相对 URL 转换为绝对 URL
- */
-function resolveUrl(baseUrl: string, relativeUrl: string): string {
-  // 如果已经是绝对 URL，直接返回
-  if (relativeUrl.startsWith('http://') || relativeUrl.startsWith('https://')) {
-    return relativeUrl;
-  }
-
-  // 如果是协议相对 URL（以 // 开头）
-  if (relativeUrl.startsWith('//')) {
-    const baseProtocol = baseUrl.startsWith('https') ? 'https:' : 'http:';
-    return baseProtocol + relativeUrl;
-  }
-
-  // 如果是根相对 URL（以 / 开头）
-  if (relativeUrl.startsWith('/')) {
-    const urlObj = new URL(baseUrl);
-    return `${urlObj.protocol}//${urlObj.host}${relativeUrl}`;
-  }
-
-  // 相对路径
-  return baseUrl + relativeUrl;
 }
