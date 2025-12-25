@@ -6,7 +6,6 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 import { Heart, ChevronUp, Download } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Image from 'next/image';
 
 import { useDownload } from '@/contexts/DownloadContext';
 import EpisodeSelector from '@/components/EpisodeSelector';
@@ -118,22 +117,6 @@ function PlayPageClient() {
     return true;
   });
   const blockAdEnabledRef = useRef(blockAdEnabled);
-
-  // 外部播放器去广告开关（独立于内置播放器）
-  const [externalPlayerAdBlock, setExternalPlayerAdBlock] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const v = localStorage.getItem('external_player_adblock');
-      if (v !== null) return v === 'true';
-    }
-    return true; // 默认开启
-  });
-
-  // 保存externalPlayerAdBlock到localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('external_player_adblock', String(externalPlayerAdBlock));
-    }
-  }, [externalPlayerAdBlock]);
 
   // 外部弹幕开关（从 localStorage 继承，默认全部关闭）
   const [externalDanmuEnabled, setExternalDanmuEnabled] = useState<boolean>(() => {
@@ -5257,147 +5240,6 @@ function PlayPageClient() {
                         <span>下载管理</span>
                       </div>
                     </button>
-
-                    {/* 外部播放器按钮组 */}
-                    {videoUrl && (
-                      <>
-                        {/* PotPlayer */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
-                              : videoUrl;
-                            window.open(`potplayer://${proxyUrl}`, '_blank');
-                          }}
-                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                          title='PotPlayer播放'
-                        >
-                          <div className='absolute inset-0 bg-gradient-to-r from-orange-400 to-red-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                            <Image src='/players/potplayer.png' alt='PotPlayer' width={16} height={16} className='w-4 h-4' />
-                            <span>PotPlayer</span>
-                          </div>
-                        </button>
-
-                        {/* VLC */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
-                              : videoUrl;
-                            window.open(`vlc://${proxyUrl}`, '_blank');
-                          }}
-                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                          title='VLC播放'
-                        >
-                          <div className='absolute inset-0 bg-gradient-to-r from-amber-400 to-yellow-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                            <Image src='/players/vlc.png' alt='VLC' width={16} height={16} className='w-4 h-4' />
-                            <span>VLC</span>
-                          </div>
-                        </button>
-
-                        {/* MPV */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
-                              : videoUrl;
-                            window.open(`mpv://${proxyUrl}`, '_blank');
-                          }}
-                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                          title='MPV播放'
-                        >
-                          <div className='absolute inset-0 bg-gradient-to-r from-gray-400 to-slate-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                            <Image src='/players/mpv.png' alt='MPV' width={16} height={16} className='w-4 h-4' />
-                            <span>MPV</span>
-                          </div>
-                        </button>
-
-                        {/* MX Player (Android) */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
-                              : videoUrl;
-                            const title = videoTitle || '视频';
-                            window.open(`intent://${proxyUrl}#Intent;package=com.mxtech.videoplayer.ad;S.title=${encodeURIComponent(title)};end`, '_blank');
-                          }}
-                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                          title='MX Player播放'
-                        >
-                          <div className='absolute inset-0 bg-gradient-to-r from-teal-400 to-cyan-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                            <Image src='/players/mxplayer.png' alt='MX Player' width={16} height={16} className='w-4 h-4' />
-                            <span>MX Player</span>
-                          </div>
-                        </button>
-
-                        {/* nPlayer (iOS) */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
-                              : videoUrl;
-                            window.open(`nplayer-${proxyUrl}`, '_blank');
-                          }}
-                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                          title='nPlayer播放'
-                        >
-                          <div className='absolute inset-0 bg-gradient-to-r from-rose-400 to-pink-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                            <Image src='/players/nplayer.png' alt='nPlayer' width={16} height={16} className='w-4 h-4' />
-                            <span>nPlayer</span>
-                          </div>
-                        </button>
-
-                        {/* IINA (macOS) */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            const proxyUrl = externalPlayerAdBlock
-                              ? `${window.location.origin}/api/proxy-m3u8?url=${encodeURIComponent(videoUrl)}&source=${encodeURIComponent(currentSource)}`
-                              : videoUrl;
-                            window.open(`iina://weblink?url=${encodeURIComponent(proxyUrl)}`, '_blank');
-                          }}
-                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                          title='IINA播放'
-                        >
-                          <div className='absolute inset-0 bg-gradient-to-r from-indigo-400 to-violet-400 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300'></div>
-                          <div className='relative flex items-center gap-1.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700 text-white px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300'>
-                            <Image src='/players/iina.png' alt='IINA' width={16} height={16} className='w-4 h-4' />
-                            <span>IINA</span>
-                          </div>
-                        </button>
-
-                        {/* 外部播放器去广告开关 */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExternalPlayerAdBlock(!externalPlayerAdBlock);
-                          }}
-                          className='group relative flex-shrink-0 transition-all duration-300 hover:scale-105'
-                          title={externalPlayerAdBlock ? '外部播放器去广告已开启' : '外部播放器去广告已关闭'}
-                        >
-                          <div className={`absolute inset-0 rounded-full opacity-0 group-hover:opacity-30 blur-xl transition-opacity duration-300 ${externalPlayerAdBlock ? 'bg-gradient-to-r from-green-400 to-emerald-400' : 'bg-gradient-to-r from-red-400 to-rose-400'}`}></div>
-                          <div className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300 ${externalPlayerAdBlock ? 'bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white' : 'bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white'}`}>
-                            {externalPlayerAdBlock ? '🛡️' : '⚠️'}
-                            <span>外部{externalPlayerAdBlock ? '去广告' : '直连'}</span>
-                          </div>
-                        </button>
-                      </>
-                    )}
                   </div>
                 </div>
               </div>
