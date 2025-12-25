@@ -21,6 +21,9 @@ export interface AdminConfig {
     TMDBApiKey?: string;
     TMDBLanguage?: string;
     EnableTMDBActorSearch?: boolean;
+    // 自定义去广告代码
+    CustomAdFilterCode?: string;
+    CustomAdFilterVersion?: number;
   };
   UserConfig: {
     AllowRegister?: boolean; // 是否允许用户注册，默认 true
