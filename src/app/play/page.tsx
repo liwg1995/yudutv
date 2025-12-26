@@ -622,6 +622,8 @@ function PlayPageClient() {
     currentSource: currentSource,  // 传入当前播放源
     videoTitle: detail?.title || '',  // 传入视频标题
     videoYear: detail?.year || '',  // 传入视频年份
+    searchTitle: searchTitle,  // 传入搜索标题
+    setCurrentEpisodeIndex,  // 传入切换集数的函数
   });
 
   // -----------------------------------------------------------------------------
