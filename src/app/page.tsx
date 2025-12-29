@@ -1060,7 +1060,7 @@ function HomeClient() {
                     ))}
                   </div>
 
-                  <ScrollableRow>
+                  <ScrollableRow enableVirtualization={true}>
                     {upcomingReleases
                       .filter(release => upcomingFilter === 'all' || release.type === upcomingFilter)
                       .map((release, index) => {
@@ -1117,7 +1117,7 @@ function HomeClient() {
                     <ChevronRight className='w-4 h-4 ml-1' />
                   </Link>
                 </div>
-                <ScrollableRow>
+                <ScrollableRow enableVirtualization={true}>
                   {loading
                     ? // 加载状态显示灰色占位数据
                     Array.from({ length: 8 }).map((_, index) => (
@@ -1158,7 +1158,7 @@ function HomeClient() {
                     <ChevronRight className='w-4 h-4 ml-1' />
                   </Link>
                 </div>
-                <ScrollableRow>
+                <ScrollableRow enableVirtualization={true}>
                   {loading
                     ? // 加载状态显示灰色占位数据
                     Array.from({ length: 8 }).map((_, index) => (
@@ -1199,7 +1199,7 @@ function HomeClient() {
                     <ChevronRight className='w-4 h-4 ml-1' />
                   </Link>
                 </div>
-                <ScrollableRow>
+                <ScrollableRow enableVirtualization={true}>
                   {loading
                     ? // 加载状态显示灰色占位数据
                     Array.from({ length: 8 }).map((_, index) => (
@@ -1268,7 +1268,7 @@ function HomeClient() {
                     <ChevronRight className='w-4 h-4 ml-1' />
                   </Link>
                 </div>
-                <ScrollableRow>
+                <ScrollableRow enableVirtualization={true}>
                   {loading
                     ? // 加载状态显示灰色占位数据
                     Array.from({ length: 8 }).map((_, index) => (
@@ -1309,7 +1309,7 @@ function HomeClient() {
                     <ChevronRight className='w-4 h-4 ml-1' />
                   </Link>
                 </div>
-                <ScrollableRow>
+                <ScrollableRow enableVirtualization={true}>
                   {loading
                     ? // 加载状态显示灰色占位数据
                     Array.from({ length: 8 }).map((_, index) => (
