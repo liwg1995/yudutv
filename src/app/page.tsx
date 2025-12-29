@@ -871,6 +871,7 @@ function HomeClient() {
 
                   if (item.releaseDate) {
                     const now = new Date();
+                    now.setHours(0, 0, 0, 0); // 归零时间，只比较日期
                     const releaseDate = new Date(item.releaseDate);
                     const daysDiff = Math.ceil((releaseDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
@@ -1066,6 +1067,7 @@ function HomeClient() {
                       .map((release, index) => {
                       // 计算距离上映还有几天
                       const now = new Date();
+                      now.setHours(0, 0, 0, 0); // 归零时间，只比较日期
                       const releaseDate = new Date(release.releaseDate);
                       const daysDiff = Math.ceil((releaseDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 
