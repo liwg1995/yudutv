@@ -43,6 +43,7 @@ export default function PurchasePage() {
   const [selectedPayment, setSelectedPayment] = useState<'wechat' | 'alipay' | null>(null);
   const [loadingQrCode, setLoadingQrCode] = useState(false);
   const [enabledPaymentMethods, setEnabledPaymentMethods] = useState<('wechat' | 'alipay')[]>(['wechat', 'alipay']);
+  const [pollingStatus, setPollingStatus] = useState(false); // 是否正在轮询状态
 
   // 检查支付是否启用
   useEffect(() => {
@@ -192,6 +193,8 @@ export default function PurchasePage() {
 
       setQrCodeUrl(data.data.qrcode);
       setPaymentUrl(data.data.url);
+      // 开始轮询订单状态
+      setPollingStatus(true);
     } catch (error) {
       console.error('获取二维码失败:', error);
       setError('获取支付二维码失败，请重试');
@@ -200,9 +203,62 @@ export default function PurchasePage() {
     }
   };
 
+  // 轮询订单支付状态
+  useEffect(() => {
+    if (!pollingStatus || !currentOrderId) return;
+
+    let isMounted = true;
+    let retryCount = 0;
+    const maxRetries = 120; // 最多轮询 120 次（约 6 分钟）
+
+    const pollOrderStatus = async () => {
+      if (!isMounted || retryCount >= maxRetries) {
+        setPollingStatus(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/orders?orderId=${currentOrderId}`);
+        const data = await response.json();
+
+        if (data.code === 200 && data.data) {
+          const order = data.data;
+          
+          // 支付成功
+          if (order.status === 'completed' || order.status === 'paid') {
+            setPollingStatus(false);
+            setShowPaymentModal(false);
+            setSelectedOrder(order);
+            setShowSuccessModal(true);
+            // 刷新订单列表
+            await loadOrders();
+            return;
+          }
+        }
+
+        retryCount++;
+        // 继续轮询
+        setTimeout(pollOrderStatus, 3000); // 每 3 秒检查一次
+      } catch (error) {
+        console.error('轮询订单状态失败:', error);
+        retryCount++;
+        setTimeout(pollOrderStatus, 3000);
+      }
+    };
+
+    // 延迟 2 秒后开始轮询，给用户时间扫码
+    const timer = setTimeout(pollOrderStatus, 2000);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [pollingStatus, currentOrderId]);
+
   // 关闭支付弹窗
   const closePaymentModal = () => {
     setShowPaymentModal(false);
+    setPollingStatus(false); // 停止轮询
     setCurrentOrderId(null);
     setQrCodeUrl(null);
     setPaymentUrl(null);
@@ -819,6 +875,14 @@ export default function PurchasePage() {
                   <p className="text-center text-gray-600 dark:text-gray-400">
                     请使用{selectedPayment === 'wechat' ? '微信' : '支付宝'}扫码支付
                   </p>
+
+                  {/* 轮询状态提示 */}
+                  {pollingStatus && (
+                    <div className="flex items-center justify-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                      <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent"></div>
+                      <span>正在等待支付结果...</span>
+                    </div>
+                  )}
 
                   {/* 手机端跳转按钮 */}
                   {paymentUrl && (
