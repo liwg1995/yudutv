@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
       orderId: order.orderId,
       amount: order.amount,
       paymentType,
+      appId: appId.substring(0, 4) + '****', // 脱敏打印
     });
 
     // 虎皮椒 API 地址（主要 + 备用）
@@ -155,13 +156,21 @@ export async function POST(request: NextRequest) {
         
         // 使用 AbortController 设置超时
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+        
+        // 打印请求信息
+        console.log('请求参数:', {
+          url: apiUrl,
+          method: 'POST',
+          bodyLength: formData.toString().length,
+        });
         
         response = await fetch(apiUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': 'LunaTV/1.0',
+            'Accept': '*/*',
           },
           body: formData.toString(),
           signal: controller.signal,
@@ -170,14 +179,24 @@ export async function POST(request: NextRequest) {
         clearTimeout(timeoutId);
         
         // 请求成功，跳出循环
-        console.log('虎皮椒API连接成功:', apiUrl);
+        console.log('虎皮椒API连接成功:', apiUrl, 'status:', response.status);
         break;
       } catch (fetchError: any) {
         lastError = fetchError;
+        // 详细打印错误信息
         console.error(`虎皮椒API连接失败 (${apiUrl}):`, {
           name: fetchError?.name,
           message: fetchError?.message,
-          cause: fetchError?.cause,
+          code: fetchError?.code,
+          cause: fetchError?.cause ? {
+            name: fetchError.cause?.name,
+            message: fetchError.cause?.message,
+            code: fetchError.cause?.code,
+            errno: fetchError.cause?.errno,
+            syscall: fetchError.cause?.syscall,
+            hostname: fetchError.cause?.hostname,
+          } : undefined,
+          stack: fetchError?.stack?.split('\n').slice(0, 3).join('\n'),
         });
         // 继续尝试下一个地址
         response = undefined;
