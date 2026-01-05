@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { clearConfigCache, getConfig } from '@/lib/config';
 import { db } from '@/lib/db';
+import { DEFAULT_MEMBERSHIP_CONFIG } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
@@ -77,7 +78,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { username, password, confirmPassword } = await req.json();
+    const { username, password, confirmPassword, inviteCode } = await req.json();
+
+    // 验证邀请码（必填）
+    if (!inviteCode || typeof inviteCode !== 'string' || inviteCode.trim() === '') {
+      return NextResponse.json({ error: '请输入邀请码' }, { status: 400 });
+    }
+
+    // 检查邀请码是否存在
+    const inviteCodeData = await db.getInviteCode(inviteCode.trim().toUpperCase());
+    if (!inviteCodeData) {
+      return NextResponse.json({ error: '邀请码不存在' }, { status: 400 });
+    }
+
+    // 检查邀请码状态
+    if (inviteCodeData.status === 'used') {
+      return NextResponse.json({ error: '邀请码已被使用' }, { status: 400 });
+    }
+
+    if (inviteCodeData.status === 'expired') {
+      return NextResponse.json({ error: '邀请码已过期' }, { status: 400 });
+    }
+
+    // 检查是否在有效期内
+    if (inviteCodeData.expiresAt > 0 && inviteCodeData.expiresAt < Date.now()) {
+      return NextResponse.json({ error: '邀请码已过期' }, { status: 400 });
+    }
 
     // 先检查配置中是否允许注册（在验证输入之前）
     let config: any;
@@ -162,12 +188,38 @@ export async function POST(req: NextRequest) {
 
       // 验证用户是否成功创建并包含tags（调试用）
       try {
-        console.log('=== 调试：验证用户创建 ===');
-        const verifyUser = await db.getUserInfoV2(username);
+        console.log('=== 调试：验证用户创建 ===')
+;        const verifyUser = await db.getUserInfoV2(username);
         console.log('数据库中的用户信息:', verifyUser);
       } catch (debugErr) {
         console.error('调试日志失败:', debugErr);
       }
+
+      // 设置用户会员信息
+      const now = Date.now();
+      const storedConfig = await db.getMembershipConfig();
+      const membershipConfig = { ...DEFAULT_MEMBERSHIP_CONFIG, ...storedConfig };
+      const membershipTypeConfig = membershipConfig[inviteCodeData.membershipType];
+      
+      await db.setUserMembership({
+        username,
+        membershipType: inviteCodeData.membershipType,
+        startDate: now,
+        expiryDate: membershipTypeConfig.duration === 0 ? 0 : now + membershipTypeConfig.duration * 24 * 60 * 60 * 1000,
+        isActive: true,
+        activatedBy: inviteCodeData.code,
+        activatedAt: now,
+      });
+
+      // 标记邀请码为已使用
+      await db.updateInviteCode(inviteCodeData.code, {
+        status: 'used',
+        usedAt: now,
+        usedBy: username,
+      });
+
+      console.log(`用户 ${username} 注册成功，会员类型: ${inviteCodeData.membershipType}`);
+
 
       // 注册成功后自动登录
       const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';

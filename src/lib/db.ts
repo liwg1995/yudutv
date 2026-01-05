@@ -7,10 +7,19 @@ import {
   ContentStat,
   EpisodeSkipConfig,
   Favorite,
+  InviteCode,
   IStorage,
+  MembershipConfig,
+  MembershipType,
+  Order,
+  PaymentConfig,
   PlayRecord,
   PlayStatsResult,
+  UserMembership,
   UserPlayStat,
+  EmailSettings,
+  UserSubscription,
+  PurchaseLimitConfig,
 } from './types';
 import { UpstashRedisStorage } from './upstash.db';
 
@@ -455,6 +464,222 @@ export class DbManager {
   isStatsSupported(): boolean {
     const storageType = process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage';
     return storageType !== 'localstorage';
+  }
+
+  // ========================================
+  // 邀请码系统相关方法
+  // ========================================
+
+  // ---------- 邀请码管理 ----------
+  async createInviteCode(code: InviteCode): Promise<void> {
+    if (typeof (this.storage as any).createInviteCode === 'function') {
+      await (this.storage as any).createInviteCode(code);
+    } else {
+      throw new Error('当前存储类型不支持邀请码功能');
+    }
+  }
+
+  async getInviteCode(code: string): Promise<InviteCode | null> {
+    if (typeof (this.storage as any).getInviteCode === 'function') {
+      return (this.storage as any).getInviteCode(code);
+    }
+    return null;
+  }
+
+  async getAllInviteCodes(): Promise<InviteCode[]> {
+    if (typeof (this.storage as any).getAllInviteCodes === 'function') {
+      return (this.storage as any).getAllInviteCodes();
+    }
+    return [];
+  }
+
+  async updateInviteCode(code: string, updates: Partial<InviteCode>): Promise<void> {
+    if (typeof (this.storage as any).updateInviteCode === 'function') {
+      await (this.storage as any).updateInviteCode(code, updates);
+    }
+  }
+
+  async deleteInviteCode(code: string): Promise<void> {
+    if (typeof (this.storage as any).deleteInviteCode === 'function') {
+      await (this.storage as any).deleteInviteCode(code);
+    }
+  }
+
+  // ---------- 订单管理 ----------
+  async createOrder(order: Order): Promise<void> {
+    if (typeof (this.storage as any).createOrder === 'function') {
+      await (this.storage as any).createOrder(order);
+    } else {
+      throw new Error('当前存储类型不支持订单功能');
+    }
+  }
+
+  async getOrder(orderId: string): Promise<Order | null> {
+    if (typeof (this.storage as any).getOrder === 'function') {
+      return (this.storage as any).getOrder(orderId);
+    }
+    return null;
+  }
+
+  async getAllOrders(): Promise<Order[]> {
+    if (typeof (this.storage as any).getAllOrders === 'function') {
+      return (this.storage as any).getAllOrders();
+    }
+    return [];
+  }
+
+  async updateOrder(orderId: string, updates: Partial<Order>): Promise<void> {
+    if (typeof (this.storage as any).updateOrder === 'function') {
+      await (this.storage as any).updateOrder(orderId, updates);
+    }
+  }
+
+  // ---------- 用户会员管理 ----------
+  async getUserMembership(username: string): Promise<UserMembership | null> {
+    if (typeof (this.storage as any).getUserMembership === 'function') {
+      return (this.storage as any).getUserMembership(username);
+    }
+    return null;
+  }
+
+  async setUserMembership(membership: UserMembership): Promise<void> {
+    if (typeof (this.storage as any).setUserMembership === 'function') {
+      await (this.storage as any).setUserMembership(membership);
+    }
+  }
+
+  // ---------- 配置管理 ----------
+  async getPaymentConfig(): Promise<PaymentConfig | null> {
+    if (typeof (this.storage as any).getPaymentConfig === 'function') {
+      return (this.storage as any).getPaymentConfig();
+    }
+    return null;
+  }
+
+  async setPaymentConfig(config: PaymentConfig): Promise<void> {
+    if (typeof (this.storage as any).setPaymentConfig === 'function') {
+      await (this.storage as any).setPaymentConfig(config);
+    }
+  }
+
+  async getMembershipConfig(): Promise<Record<MembershipType, MembershipConfig> | null> {
+    if (typeof (this.storage as any).getMembershipConfig === 'function') {
+      return (this.storage as any).getMembershipConfig();
+    }
+    return null;
+  }
+
+  async setMembershipConfig(config: Record<MembershipType, MembershipConfig>): Promise<void> {
+    if (typeof (this.storage as any).setMembershipConfig === 'function') {
+      await (this.storage as any).setMembershipConfig(config);
+    }
+  }
+
+  // ========================================
+  // 邮件配置相关方法
+  // ========================================
+
+  async getEmailSettings(): Promise<EmailSettings | null> {
+    if (typeof (this.storage as any).getEmailSettings === 'function') {
+      return (this.storage as any).getEmailSettings();
+    }
+    return null;
+  }
+
+  async setEmailSettings(config: EmailSettings): Promise<void> {
+    if (typeof (this.storage as any).setEmailSettings === 'function') {
+      await (this.storage as any).setEmailSettings(config);
+    }
+  }
+
+  // ========================================
+  // 影视订阅相关方法
+  // ========================================
+
+  async createSubscription(sub: UserSubscription): Promise<void> {
+    if (typeof (this.storage as any).createSubscription === 'function') {
+      await (this.storage as any).createSubscription(sub);
+    } else {
+      throw new Error('当前存储类型不支持订阅功能');
+    }
+  }
+
+  async getSubscription(id: string): Promise<UserSubscription | null> {
+    if (typeof (this.storage as any).getSubscription === 'function') {
+      return (this.storage as any).getSubscription(id);
+    }
+    return null;
+  }
+
+  async getUserSubscriptions(username: string): Promise<UserSubscription[]> {
+    if (typeof (this.storage as any).getUserSubscriptions === 'function') {
+      return (this.storage as any).getUserSubscriptions(username);
+    }
+    return [];
+  }
+
+  async getAllSubscriptions(): Promise<UserSubscription[]> {
+    if (typeof (this.storage as any).getAllSubscriptions === 'function') {
+      return (this.storage as any).getAllSubscriptions();
+    }
+    return [];
+  }
+
+  async updateSubscription(id: string, updates: Partial<UserSubscription>): Promise<void> {
+    if (typeof (this.storage as any).updateSubscription === 'function') {
+      await (this.storage as any).updateSubscription(id, updates);
+    }
+  }
+
+  async deleteSubscription(id: string): Promise<void> {
+    if (typeof (this.storage as any).deleteSubscription === 'function') {
+      await (this.storage as any).deleteSubscription(id);
+    }
+  }
+
+  // ========================================
+  // 购买限制配置
+  // ========================================
+
+  async getPurchaseLimitConfig(): Promise<PurchaseLimitConfig | null> {
+    if (typeof (this.storage as any).getPurchaseLimitConfig === 'function') {
+      return (this.storage as any).getPurchaseLimitConfig();
+    }
+    // 默认配置
+    return {
+      trialMaxPerEmail: 1,
+      trialMaxPerDay: 100,
+    };
+  }
+
+  async setPurchaseLimitConfig(config: PurchaseLimitConfig): Promise<void> {
+    if (typeof (this.storage as any).setPurchaseLimitConfig === 'function') {
+      await (this.storage as any).setPurchaseLimitConfig(config);
+    }
+  }
+
+  // 获取某邮箱已购买的体验会员数量
+  async getTrialPurchaseCountByEmail(email: string): Promise<number> {
+    const orders = await this.getAllOrders();
+    return orders.filter(o => 
+      o.email === email && 
+      o.membershipType === 'trial' && 
+      (o.status === 'completed' || o.status === 'paid')
+    ).length;
+  }
+
+  // 获取今天已购买的体验会员数量
+  async getTodayTrialPurchaseCount(): Promise<number> {
+    const orders = await this.getAllOrders();
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayStartTs = todayStart.getTime();
+    
+    return orders.filter(o => 
+      o.membershipType === 'trial' && 
+      (o.status === 'completed' || o.status === 'paid') &&
+      o.createdAt >= todayStartTs
+    ).length;
   }
 }
 

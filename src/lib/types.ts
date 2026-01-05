@@ -402,3 +402,250 @@ export interface PersonalizedReleaseRecommendation {
   }>;
   generatedAt: number; // 生成时间戳
 }
+
+// ========================================
+// 会员邀请码系统
+// ========================================
+
+// 会员类型枚举
+export type MembershipType = 'trial' | 'monthly' | 'quarterly' | 'yearly' | 'lifetime';
+
+// 会员类型配置
+export interface MembershipConfig {
+  type: MembershipType;
+  name: string; // 显示名称：月度会员、季度会员、年度会员、永久会员
+  duration: number; // 时长（天），0表示永久
+  price: number; // 价格（元）
+  description?: string; // 描述
+  features?: string[]; // 特权列表
+}
+
+// 默认会员配置
+export const DEFAULT_MEMBERSHIP_CONFIG: Record<MembershipType, MembershipConfig> = {
+  trial: {
+    type: 'trial',
+    name: '体验会员',
+    duration: 1,
+    price: 0.1,
+    description: '1天体验会员权限',
+  },
+  monthly: {
+    type: 'monthly',
+    name: '月度会员',
+    duration: 30,
+    price: 25,
+    description: '1个月会员权限',
+  },
+  quarterly: {
+    type: 'quarterly',
+    name: '季度会员',
+    duration: 90,
+    price: 60,
+    description: '3个月会员权限',
+  },
+  yearly: {
+    type: 'yearly',
+    name: '年度会员',
+    duration: 365,
+    price: 199,
+    description: '12个月会员权限',
+  },
+  lifetime: {
+    type: 'lifetime',
+    name: '永久会员',
+    duration: 0, // 0表示永久
+    price: 399,
+    description: '永久会员权限',
+  },
+};
+
+// 邀请码状态
+export type InviteCodeStatus = 'unused' | 'used' | 'expired';
+
+// 邀请码数据结构
+export interface InviteCode {
+  code: string; // 邀请码（唯一）
+  membershipType: MembershipType; // 会员类型
+  status: InviteCodeStatus; // 状态
+  createdAt: number; // 创建时间戳
+  expiresAt: number; // 过期时间戳（0表示永不过期）
+  usedAt?: number; // 使用时间戳
+  usedBy?: string; // 使用者用户名
+  createdBy: string; // 创建者（管理员用户名）
+  note?: string; // 备注
+  orderId?: string; // 关联订单ID（购买生成的邀请码）
+}
+
+// 支付方式类型
+export type PaymentMethod = 
+  | 'wechat_official' // 官方微信支付
+  | 'alipay_official' // 官方支付宝
+  | 'xorpay_wechat' // 虎皮椒微信支付
+  | 'xorpay_alipay'; // 虎皮椒支付宝
+
+// 支付配置
+export interface PaymentConfig {
+  enabled: boolean; // 是否启用
+  method: PaymentMethod; // 支付方式
+  
+  // 官方微信支付配置
+  wechatOfficial?: {
+    appId: string; // 微信公众号AppID
+    mchId: string; // 商户号
+    apiKey: string; // API密钥
+    notifyUrl: string; // 回调地址
+  };
+  
+  // 官方支付宝配置
+  alipayOfficial?: {
+    appId: string; // 支付宝AppID
+    privateKey: string; // 应用私钥
+    publicKey: string; // 支付宝公钥
+    notifyUrl: string; // 回调地址
+  };
+  
+  // 虎皮椒配置（支持微信和支付宝）
+  xorpay?: {
+    appId: string; // 虎皮椒AppID
+    appSecret: string; // 虎皮椒AppSecret
+    notifyUrl: string; // 回调地址
+  };
+}
+
+// 订单状态
+export type OrderStatus = 
+  | 'pending' // 待支付
+  | 'paid' // 已支付
+  | 'completed' // 已完成（邀请码已生成）
+  | 'cancelled' // 已取消
+  | 'refunded'; // 已退款
+
+// 订单数据结构
+export interface Order {
+  orderId: string; // 订单ID（唯一）
+  userId?: string; // 购买用户ID（可选，未登录用户购买）
+  email: string; // 联系邮箱（必填）
+  membershipType: MembershipType; // 会员类型
+  amount: number; // 金额（元）
+  paymentMethod: PaymentMethod; // 支付方式
+  status: OrderStatus; // 订单状态
+  createdAt: number; // 创建时间戳
+  paidAt?: number; // 支付时间戳
+  completedAt?: number; // 完成时间戳
+  inviteCode?: string; // 生成的邀请码
+  transactionId?: string; // 第三方支付交易号
+  notifyData?: any; // 支付回调数据
+  emailSent?: boolean; // 邮件是否已发送
+}
+
+// 用户会员信息
+export interface UserMembership {
+  username: string; // 用户名
+  membershipType: MembershipType | null; // 当前会员类型（null表示非会员）
+  startDate?: number; // 会员开始时间戳
+  expiryDate?: number; // 会员到期时间戳（0表示永久）
+  isActive: boolean; // 是否激活
+  activatedBy?: string; // 激活邀请码
+  activatedAt?: number; // 激活时间戳
+}
+
+// ========================================
+// 邮件配置
+// ========================================
+
+// 邮件服务提供商
+export type EmailProvider = 'smtp' | 'resend';
+
+// 邮件配置
+export interface EmailSettings {
+  enabled: boolean;
+  provider: EmailProvider;
+  // SMTP 配置
+  smtp?: {
+    host: string;
+    port: number;
+    secure: boolean; // true for 465, false for other ports
+    user: string;
+    pass: string;
+  };
+  // Resend 配置
+  resendApiKey?: string;
+  // 发件人信息
+  fromEmail: string;
+  fromName: string;
+}
+
+// ========================================
+// 影视订阅
+// ========================================
+
+// 订阅状态
+export type SubscriptionStatus = 'active' | 'paused';
+
+// 用户订阅
+export interface UserSubscription {
+  id: string; // 订阅ID
+  username: string; // 用户名
+  email: string; // 接收邮箱
+  title: string; // 影视标题
+  sourceKey: string; // 资源key (source+id)
+  currentEpisodes: number; // 当前集数
+  lastChecked: number; // 上次检查时间
+  status: SubscriptionStatus;
+  createdAt: number;
+  notifiedEpisodes: number; // 已通知的集数
+}
+
+// ========================================
+// 体验会员购买限制
+// ========================================
+
+// 购买限制配置
+export interface PurchaseLimitConfig {
+  trialMaxPerEmail: number; // 每个邮箱可购买的体验会员数量
+  trialMaxPerDay: number; // 每天可购买的体验会员总数量（全局）
+}
+
+// 扩展 IStorage 接口，添加邀请码相关方法
+export interface IStorageWithInviteCode extends IStorage {
+  // 邀请码管理
+  createInviteCode(code: InviteCode): Promise<void>;
+  getInviteCode(code: string): Promise<InviteCode | null>;
+  getAllInviteCodes(): Promise<InviteCode[]>;
+  updateInviteCode(code: string, updates: Partial<InviteCode>): Promise<void>;
+  deleteInviteCode(code: string): Promise<void>;
+  
+  // 订单管理
+  createOrder(order: Order): Promise<void>;
+  getOrder(orderId: string): Promise<Order | null>;
+  getAllOrders(): Promise<Order[]>;
+  updateOrder(orderId: string, updates: Partial<Order>): Promise<void>;
+  
+  // 用户会员管理
+  getUserMembership(username: string): Promise<UserMembership | null>;
+  setUserMembership(membership: UserMembership): Promise<void>;
+  
+  // 支付配置
+  getPaymentConfig(): Promise<PaymentConfig | null>;
+  setPaymentConfig(config: PaymentConfig): Promise<void>;
+  
+  // 会员配置
+  getMembershipConfig(): Promise<Record<MembershipType, MembershipConfig> | null>;
+  setMembershipConfig(config: Record<MembershipType, MembershipConfig>): Promise<void>;
+
+  // 邮件配置
+  getEmailSettings(): Promise<EmailSettings | null>;
+  setEmailSettings(config: EmailSettings): Promise<void>;
+
+  // 影视订阅
+  createSubscription(sub: UserSubscription): Promise<void>;
+  getSubscription(id: string): Promise<UserSubscription | null>;
+  getUserSubscriptions(username: string): Promise<UserSubscription[]>;
+  getAllSubscriptions(): Promise<UserSubscription[]>;
+  updateSubscription(id: string, updates: Partial<UserSubscription>): Promise<void>;
+  deleteSubscription(id: string): Promise<void>;
+
+  // 购买限制配置
+  getPurchaseLimitConfig(): Promise<PurchaseLimitConfig | null>;
+  setPurchaseLimitConfig(config: PurchaseLimitConfig): Promise<void>;
+}

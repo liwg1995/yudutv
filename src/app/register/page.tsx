@@ -2,7 +2,7 @@
 
 'use client';
 
-import { AlertCircle, CheckCircle, User, Lock, Sparkles, UserPlus, Shield } from 'lucide-react';
+import { AlertCircle, CheckCircle, User, Lock, Sparkles, UserPlus, Shield, Key, ShoppingCart } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 
@@ -70,6 +70,7 @@ function RegisterPageClient() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -140,7 +141,7 @@ function RegisterPageClient() {
     setError(null);
     setSuccess(null);
 
-    if (!username || !password || !confirmPassword) {
+    if (!username || !password || !confirmPassword || !inviteCode) {
       setError('请填写完整信息');
       return;
     }
@@ -159,6 +160,7 @@ function RegisterPageClient() {
           username,
           password,
           confirmPassword,
+          inviteCode: inviteCode.trim().toUpperCase(),
         }),
       });
 
@@ -366,6 +368,36 @@ function RegisterPageClient() {
             </div>
           </div>
 
+          <div className='group'>
+            <label htmlFor='inviteCode' className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
+              邀请码 <span className='text-red-500'>*</span>
+            </label>
+            <div className='relative'>
+              <div className='absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none'>
+                <Key className='h-5 w-5 text-gray-400 dark:text-gray-500 group-focus-within:text-purple-500 transition-colors' />
+              </div>
+              <input
+                id='inviteCode'
+                type='text'
+                autoComplete='off'
+                className='block w-full pl-12 pr-4 py-3.5 rounded-xl border-0 text-gray-900 dark:text-gray-100 shadow-sm ring-2 ring-white/60 dark:ring-white/10 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:ring-2 focus:ring-purple-500 dark:focus:ring-purple-400 focus:outline-none sm:text-base bg-white/80 dark:bg-zinc-800/80 backdrop-blur transition-all duration-300 hover:shadow-md uppercase'
+                placeholder='请输入邀请码'
+                value={inviteCode}
+                onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+              />
+            </div>
+            <p className='mt-1.5 text-xs text-gray-500 dark:text-gray-400'>
+              注册需要邀请码，没有邀请码？
+              <a
+                href='/purchase'
+                className='ml-1 inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 font-medium hover:underline transition-colors'
+              >
+                <ShoppingCart className='w-3 h-3' />
+                点此购买
+              </a>
+            </p>
+          </div>
+
           {error && (
             <div className='flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 animate-slide-down'>
               <AlertCircle className='h-4 w-4 text-red-600 dark:text-red-400 shrink-0' />
@@ -383,7 +415,7 @@ function RegisterPageClient() {
           <button
             type='submit'
             disabled={
-              !username || !password || !confirmPassword || loading || !!success
+              !username || !password || !confirmPassword || !inviteCode || loading || !!success
             }
             className='group relative inline-flex w-full justify-center items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 py-3.5 text-base font-semibold text-white shadow-lg shadow-blue-500/30 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/40 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-lg overflow-hidden'
           >

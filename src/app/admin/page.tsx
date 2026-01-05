@@ -62,6 +62,9 @@ import ShortDramaConfig from '@/components/ShortDramaConfig';
 import DownloadConfig from '@/components/OfflineDownloadConfig';
 import CustomAdFilterConfig from '@/components/CustomAdFilterConfig';
 import WatchRoomConfig from '@/components/WatchRoomConfig';
+import InviteCodeManager from '@/components/InviteCodeManager';
+import PaymentConfigManager from '@/components/PaymentConfigManager';
+import EmailConfigManager from '@/components/EmailConfigManager';
 import PageLayout from '@/components/PageLayout';
 
 // 统一按钮样式系统
@@ -6212,6 +6215,9 @@ function AdminPageClient() {
     configFile: false,
     cacheManager: false,
     dataMigration: false,
+    inviteCodeManager: false,
+    paymentConfig: false,
+    emailConfig: false,
   });
 
   // 获取管理员配置
@@ -6374,6 +6380,48 @@ function AdminPageClient() {
                 refreshConfig={fetchConfig}
               />
             </CollapsibleTab>
+
+            {/* 邀请码管理标签 - 仅站长可见 */}
+            {role === 'owner' && (
+              <CollapsibleTab
+                title='邀请码管理'
+                icon={
+                  <KeyRound size={20} className='text-purple-600 dark:text-purple-400' />
+                }
+                isExpanded={expandedTabs.inviteCodeManager}
+                onToggle={() => toggleTab('inviteCodeManager')}
+              >
+                <InviteCodeManager />
+              </CollapsibleTab>
+            )}
+
+            {/* 支付配置标签 - 仅站长可见 */}
+            {role === 'owner' && (
+              <CollapsibleTab
+                title='支付配置'
+                icon={
+                  <KeyRound size={20} className='text-green-600 dark:text-green-400' />
+                }
+                isExpanded={expandedTabs.paymentConfig}
+                onToggle={() => toggleTab('paymentConfig')}
+              >
+                <PaymentConfigManager />
+              </CollapsibleTab>
+            )}
+
+            {/* 邮件配置标签 - 仅站长可见 */}
+            {role === 'owner' && (
+              <CollapsibleTab
+                title='邮件配置'
+                icon={
+                  <Settings size={20} className='text-blue-600 dark:text-blue-400' />
+                }
+                isExpanded={expandedTabs.emailConfig}
+                onToggle={() => toggleTab('emailConfig')}
+              >
+                <EmailConfigManager onAlert={(alert) => showAlert({ type: alert.type, title: alert.title, message: alert.message, timer: alert.type === 'success' ? 2000 : undefined, showConfirm: alert.type === 'error' })} />
+              </CollapsibleTab>
+            )}
 
             {/* 视频源配置标签 */}
             <CollapsibleTab

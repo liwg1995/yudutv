@@ -7,10 +7,19 @@ import {
   ContentStat,
   EpisodeSkipConfig,
   Favorite,
+  InviteCode,
   IStorage,
+  MembershipConfig,
+  MembershipType,
+  Order,
+  PaymentConfig,
   PlayRecord,
   PlayStatsResult,
+  UserMembership,
   UserPlayStat,
+  EmailSettings,
+  UserSubscription,
+  PurchaseLimitConfig,
 } from './types';
 
 // 搜索历史最大条数
@@ -1303,5 +1312,304 @@ export abstract class BaseRedisStorage implements IStorage {
       console.error(`更新用户 ${userName} 登入统计失败:`, error);
       throw error;
     }
+  }
+
+  // ========================================
+  // 邀请码系统相关方法
+  // ========================================
+
+  // ---------- 邀请码管理 ----------
+  private inviteCodeKey(code: string) {
+    return `invite_code:${code}`;
+  }
+
+  private inviteCodesSetKey() {
+    return 'invite_codes:all';
+  }
+
+  async createInviteCode(code: InviteCode): Promise<void> {
+    await this.withRetry(async () => {
+      // 保存邀请码数据
+      await this.client.set(this.inviteCodeKey(code.code), JSON.stringify(code));
+      // 添加到集合中
+      await this.client.sAdd(this.inviteCodesSetKey(), code.code);
+    });
+  }
+
+  async getInviteCode(code: string): Promise<InviteCode | null> {
+    const val = await this.withRetry(() => this.client.get(this.inviteCodeKey(code)));
+    if (!val) return null;
+    
+    const inviteCode = JSON.parse(val) as InviteCode;
+    
+    // 检查是否过期
+    if (inviteCode.expiresAt > 0 && inviteCode.expiresAt < Date.now()) {
+      // 自动更新为过期状态
+      if (inviteCode.status !== 'expired') {
+        inviteCode.status = 'expired';
+        await this.updateInviteCode(code, { status: 'expired' });
+      }
+    }
+    
+    return inviteCode;
+  }
+
+  async getAllInviteCodes(): Promise<InviteCode[]> {
+    const codes = await this.withRetry(() => this.client.sMembers(this.inviteCodesSetKey()));
+    if (codes.length === 0) return [];
+    
+    const keys = codes.map(code => this.inviteCodeKey(code));
+    const values = await this.withRetry(() => this.client.mGet(keys));
+    
+    const result: InviteCode[] = [];
+    values.forEach((val) => {
+      if (val) {
+        const inviteCode = JSON.parse(val) as InviteCode;
+        // 检查并更新过期状态
+        if (inviteCode.expiresAt > 0 && inviteCode.expiresAt < Date.now() && inviteCode.status !== 'expired') {
+          inviteCode.status = 'expired';
+        }
+        result.push(inviteCode);
+      }
+    });
+    
+    return result;
+  }
+
+  async updateInviteCode(code: string, updates: Partial<InviteCode>): Promise<void> {
+    const existing = await this.getInviteCode(code);
+    if (!existing) throw new Error('邀请码不存在');
+    
+    const updated = { ...existing, ...updates };
+    await this.withRetry(() => 
+      this.client.set(this.inviteCodeKey(code), JSON.stringify(updated))
+    );
+  }
+
+  async deleteInviteCode(code: string): Promise<void> {
+    await this.withRetry(async () => {
+      await this.client.del(this.inviteCodeKey(code));
+      await this.client.sRem(this.inviteCodesSetKey(), code);
+    });
+  }
+
+  // ---------- 订单管理 ----------
+  private orderKey(orderId: string) {
+    return `order:${orderId}`;
+  }
+
+  private ordersSetKey() {
+    return 'orders:all';
+  }
+
+  async createOrder(order: Order): Promise<void> {
+    await this.withRetry(async () => {
+      await this.client.set(this.orderKey(order.orderId), JSON.stringify(order));
+      await this.client.sAdd(this.ordersSetKey(), order.orderId);
+    });
+  }
+
+  async getOrder(orderId: string): Promise<Order | null> {
+    const val = await this.withRetry(() => this.client.get(this.orderKey(orderId)));
+    return val ? (JSON.parse(val) as Order) : null;
+  }
+
+  async getAllOrders(): Promise<Order[]> {
+    const orderIds = await this.withRetry(() => this.client.sMembers(this.ordersSetKey()));
+    if (orderIds.length === 0) return [];
+    
+    const keys = orderIds.map(id => this.orderKey(id));
+    const values = await this.withRetry(() => this.client.mGet(keys));
+    
+    const result: Order[] = [];
+    values.forEach((val) => {
+      if (val) result.push(JSON.parse(val) as Order);
+    });
+    
+    return result;
+  }
+
+  async updateOrder(orderId: string, updates: Partial<Order>): Promise<void> {
+    const existing = await this.getOrder(orderId);
+    if (!existing) throw new Error('订单不存在');
+    
+    const updated = { ...existing, ...updates };
+    await this.withRetry(() => 
+      this.client.set(this.orderKey(orderId), JSON.stringify(updated))
+    );
+  }
+
+  // ---------- 用户会员管理 ----------
+  private userMembershipKey(username: string) {
+    return `user:${username}:membership`;
+  }
+
+  async getUserMembership(username: string): Promise<UserMembership | null> {
+    const val = await this.withRetry(() => this.client.get(this.userMembershipKey(username)));
+    if (!val) return null;
+    
+    const membership = JSON.parse(val) as UserMembership;
+    
+    // 检查会员是否过期
+    if (membership.expiryDate && membership.expiryDate > 0 && membership.expiryDate < Date.now()) {
+      membership.isActive = false;
+    }
+    
+    return membership;
+  }
+
+  async setUserMembership(membership: UserMembership): Promise<void> {
+    await this.withRetry(() => 
+      this.client.set(this.userMembershipKey(membership.username), JSON.stringify(membership))
+    );
+  }
+
+  // ---------- 配置管理 ----------
+  private paymentConfigKey() {
+    return 'payment:config';
+  }
+
+  private membershipConfigKey() {
+    return 'membership:config';
+  }
+
+  async getPaymentConfig(): Promise<PaymentConfig | null> {
+    const val = await this.withRetry(() => this.client.get(this.paymentConfigKey()));
+    return val ? (JSON.parse(val) as PaymentConfig) : null;
+  }
+
+  async setPaymentConfig(config: PaymentConfig): Promise<void> {
+    await this.withRetry(() => 
+      this.client.set(this.paymentConfigKey(), JSON.stringify(config))
+    );
+  }
+
+  async getMembershipConfig(): Promise<Record<MembershipType, MembershipConfig> | null> {
+    const val = await this.withRetry(() => this.client.get(this.membershipConfigKey()));
+    return val ? (JSON.parse(val) as Record<MembershipType, MembershipConfig>) : null;
+  }
+
+  async setMembershipConfig(config: Record<MembershipType, MembershipConfig>): Promise<void> {
+    await this.withRetry(() => 
+      this.client.set(this.membershipConfigKey(), JSON.stringify(config))
+    );
+  }
+
+  // ========================================
+  // 邮件配置
+  // ========================================
+
+  private emailSettingsKey() {
+    return 'email:settings';
+  }
+
+  async getEmailSettings(): Promise<EmailSettings | null> {
+    const val = await this.withRetry(() => this.client.get(this.emailSettingsKey()));
+    return val ? (JSON.parse(val) as EmailSettings) : null;
+  }
+
+  async setEmailSettings(config: EmailSettings): Promise<void> {
+    await this.withRetry(() => 
+      this.client.set(this.emailSettingsKey(), JSON.stringify(config))
+    );
+  }
+
+  // ========================================
+  // 影视订阅
+  // ========================================
+
+  private subscriptionKey(id: string) {
+    return `subscription:${id}`;
+  }
+
+  private subscriptionsSetKey() {
+    return 'subscriptions:all';
+  }
+
+  private userSubscriptionsSetKey(username: string) {
+    return `user:${username}:subscriptions`;
+  }
+
+  async createSubscription(sub: UserSubscription): Promise<void> {
+    await this.withRetry(async () => {
+      await this.client.set(this.subscriptionKey(sub.id), JSON.stringify(sub));
+      await this.client.sAdd(this.subscriptionsSetKey(), sub.id);
+      await this.client.sAdd(this.userSubscriptionsSetKey(sub.username), sub.id);
+    });
+  }
+
+  async getSubscription(id: string): Promise<UserSubscription | null> {
+    const val = await this.withRetry(() => this.client.get(this.subscriptionKey(id)));
+    return val ? (JSON.parse(val) as UserSubscription) : null;
+  }
+
+  async getUserSubscriptions(username: string): Promise<UserSubscription[]> {
+    const ids = await this.withRetry(() => this.client.sMembers(this.userSubscriptionsSetKey(username)));
+    if (ids.length === 0) return [];
+    
+    const keys = ids.map(id => this.subscriptionKey(id));
+    const values = await this.withRetry(() => this.client.mGet(keys));
+    
+    const result: UserSubscription[] = [];
+    values.forEach((val) => {
+      if (val) result.push(JSON.parse(val) as UserSubscription);
+    });
+    
+    return result;
+  }
+
+  async getAllSubscriptions(): Promise<UserSubscription[]> {
+    const ids = await this.withRetry(() => this.client.sMembers(this.subscriptionsSetKey()));
+    if (ids.length === 0) return [];
+    
+    const keys = ids.map(id => this.subscriptionKey(id));
+    const values = await this.withRetry(() => this.client.mGet(keys));
+    
+    const result: UserSubscription[] = [];
+    values.forEach((val) => {
+      if (val) result.push(JSON.parse(val) as UserSubscription);
+    });
+    
+    return result;
+  }
+
+  async updateSubscription(id: string, updates: Partial<UserSubscription>): Promise<void> {
+    const existing = await this.getSubscription(id);
+    if (!existing) throw new Error('订阅不存在');
+    
+    const updated = { ...existing, ...updates };
+    await this.withRetry(() => 
+      this.client.set(this.subscriptionKey(id), JSON.stringify(updated))
+    );
+  }
+
+  async deleteSubscription(id: string): Promise<void> {
+    const sub = await this.getSubscription(id);
+    if (sub) {
+      await this.withRetry(async () => {
+        await this.client.del(this.subscriptionKey(id));
+        await this.client.sRem(this.subscriptionsSetKey(), id);
+        await this.client.sRem(this.userSubscriptionsSetKey(sub.username), id);
+      });
+    }
+  }
+
+  // ========================================
+  // 购买限制配置
+  // ========================================
+
+  private purchaseLimitConfigKey() {
+    return 'purchase:limit:config';
+  }
+
+  async getPurchaseLimitConfig(): Promise<PurchaseLimitConfig | null> {
+    const val = await this.withRetry(() => this.client.get(this.purchaseLimitConfigKey()));
+    return val ? (JSON.parse(val) as PurchaseLimitConfig) : null;
+  }
+
+  async setPurchaseLimitConfig(config: PurchaseLimitConfig): Promise<void> {
+    await this.withRetry(() => 
+      this.client.set(this.purchaseLimitConfigKey(), JSON.stringify(config))
+    );
   }
 }

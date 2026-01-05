@@ -70,68 +70,72 @@ async function generateAuthCookie(
 
 export async function POST(req: NextRequest) {
   try {
-    // 本地 / localStorage 模式——仅校验固定密码
-    if (STORAGE_TYPE === 'localstorage') {
-      const envPassword = process.env.PASSWORD;
+    const { username, password } = await req.json();
 
+    // 密码不能为空
+    if (!password || typeof password !== 'string') {
+      return NextResponse.json({ error: '密码不能为空' }, { status: 400 });
+    }
+
+    const envPassword = process.env.PASSWORD;
+    const envUsername = process.env.USERNAME || 'admin';
+
+    // 本地 / localStorage 模式
+    if (STORAGE_TYPE === 'localstorage') {
       // 未配置 PASSWORD 时直接放行
       if (!envPassword) {
         const response = NextResponse.json({ ok: true });
-
-        // 清除可能存在的认证cookie
         response.cookies.set('user_auth', '', {
           path: '/',
           expires: new Date(0),
-          sameSite: 'lax', // 改为 lax 以支持 PWA
-          httpOnly: false, // PWA 需要客户端可访问
-          secure: false, // 根据协议自动设置
+          sameSite: 'lax',
+          httpOnly: false,
+          secure: false,
+        });
+        return response;
+      }
+
+      // 管理员登录：用户名为空或与管理员用户名匹配
+      if (!username || username === envUsername) {
+        if (password !== envPassword) {
+          return NextResponse.json(
+            { ok: false, error: '密码错误' },
+            { status: 401 }
+          );
+        }
+
+        // 验证成功，设置认证cookie
+        const response = NextResponse.json({ ok: true });
+        const cookieValue = await generateAuthCookie(
+          envUsername,
+          password,
+          'owner',
+          true
+        );
+        const expires = new Date();
+        expires.setDate(expires.getDate() + 7);
+
+        response.cookies.set('user_auth', cookieValue, {
+          path: '/',
+          expires,
+          sameSite: 'lax',
+          httpOnly: false,
+          secure: false,
         });
 
         return response;
       }
 
-      const { password } = await req.json();
-      if (typeof password !== 'string') {
-        return NextResponse.json({ error: '密码不能为空' }, { status: 400 });
-      }
-
-      if (password !== envPassword) {
-        return NextResponse.json(
-          { ok: false, error: '密码错误' },
-          { status: 401 }
-        );
-      }
-
-      // 验证成功，设置认证cookie
-      const response = NextResponse.json({ ok: true });
-      const cookieValue = await generateAuthCookie(
-        undefined,
-        password,
-        'user',
-        true
-      ); // localstorage 模式包含 password
-      const expires = new Date();
-      expires.setDate(expires.getDate() + 7); // 7天过期
-
-      response.cookies.set('user_auth', cookieValue, {
-        path: '/',
-        expires,
-        sameSite: 'lax', // 改为 lax 以支持 PWA
-        httpOnly: false, // PWA 需要客户端可访问
-        secure: false, // 根据协议自动设置
-      });
-
-      return response;
+      // 其他用户名，提示需要配置数据库
+      return NextResponse.json(
+        { error: '会员登录需要配置数据库存储（Redis/Kvrocks/Upstash）' },
+        { status: 400 }
+      );
     }
 
     // 数据库 / redis 模式——校验用户名并尝试连接数据库
-    const { username, password } = await req.json();
-
     if (!username || typeof username !== 'string') {
       return NextResponse.json({ error: '用户名不能为空' }, { status: 400 });
-    }
-    if (!password || typeof password !== 'string') {
-      return NextResponse.json({ error: '密码不能为空' }, { status: 400 });
     }
 
     // 可能是站长，直接读环境变量

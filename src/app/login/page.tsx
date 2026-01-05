@@ -72,7 +72,7 @@ function LoginPageClient() {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [shouldAskUsername, setShouldAskUsername] = useState(false);
+  const [shouldAskUsername, setShouldAskUsername] = useState(true);  // 始终显示用户名输入框以支持会员登录
   const [bingWallpaper, setBingWallpaper] = useState<string>('');
 
   // Telegram Magic Link 状态
@@ -111,12 +111,10 @@ function LoginPageClient() {
     fetchBingWallpaper();
   }, []);
 
-  // 在客户端挂载后设置配置
+  // 始终显示用户名输入框，支持会员登录系统
+  // 注：用户名为空时使用管理员密码登录，用户名不为空时使用会员账号登录
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storageType = (window as any).RUNTIME_CONFIG?.STORAGE_TYPE;
-      setShouldAskUsername(storageType && storageType !== 'localstorage');
-    }
+    setShouldAskUsername(true);
   }, []);
 
   // 获取 Telegram Magic Link 配置
