@@ -415,7 +415,10 @@ export interface MembershipConfig {
   type: MembershipType;
   name: string; // 显示名称：月度会员、季度会员、年度会员、永久会员
   duration: number; // 时长（天），0表示永久
-  price: number; // 价格（元）
+  price: number; // 原价（元）
+  discountPrice?: number; // 折扣价（元），不设置则表示无折扣
+  discount?: number; // 折扣百分比（0-100），仅用于显示，实际价格以 discountPrice 为准
+  enabled?: boolean; // 是否启用该会员类型，默认 true
   description?: string; // 描述
   features?: string[]; // 特权列表
 }
@@ -460,7 +463,7 @@ export const DEFAULT_MEMBERSHIP_CONFIG: Record<MembershipType, MembershipConfig>
 };
 
 // 邀请码状态
-export type InviteCodeStatus = 'unused' | 'used' | 'expired';
+export type InviteCodeStatus = 'unused' | 'used' | 'expired' | 'disabled';
 
 // 邀请码数据结构
 export interface InviteCode {
@@ -483,10 +486,14 @@ export type PaymentMethod =
   | 'xorpay_wechat' // 虎皮椒微信支付
   | 'xorpay_alipay'; // 虎皮椒支付宝
 
+// 虎皮椒支持的支付方式
+export type XorpayMethod = 'wechat' | 'alipay';
+
 // 支付配置
 export interface PaymentConfig {
   enabled: boolean; // 是否启用
-  method: PaymentMethod; // 支付方式
+  method: PaymentMethod; // 默认支付方式（向后兼容）
+  enabledMethods?: XorpayMethod[]; // 启用的支付方式列表（微信/支付宝）
   
   // 官方微信支付配置
   wechatOfficial?: {
@@ -536,6 +543,12 @@ export interface Order {
   transactionId?: string; // 第三方支付交易号
   notifyData?: any; // 支付回调数据
   emailSent?: boolean; // 邮件是否已发送
+  // 退款相关字段
+  refundStatus?: 'refunding' | 'refunded' | 'refund_failed'; // 退款状态
+  refundAt?: number; // 退款时间戳
+  refundReason?: string; // 退款原因
+  refundNo?: string; // 退款单号
+  refundFee?: string; // 退款金额
 }
 
 // 用户会员信息

@@ -100,13 +100,26 @@ export async function POST(request: NextRequest) {
     const membershipConfig = { ...DEFAULT_MEMBERSHIP_CONFIG, ...storedConfig };
     const config = membershipConfig[membershipType as MembershipType];
 
+    // 检查会员类型是否启用
+    if (config.enabled === false) {
+      return NextResponse.json(
+        { code: 400, message: '该会员类型已下架' },
+        { status: 400 }
+      );
+    }
+
+    // 计算实际价格（有折扣价用折扣价，否则用原价）
+    const actualPrice = config.discountPrice && config.discountPrice > 0 && config.discountPrice < config.price
+      ? config.discountPrice
+      : config.price;
+
     // 创建订单
     const order: Order = {
       orderId: generateOrderId(),
       userId: authInfo?.username,
       email: email.trim().toLowerCase(),
       membershipType: membershipType as MembershipType,
-      amount: config.price,
+      amount: actualPrice, // 使用实际价格
       paymentMethod: paymentConfig.method,
       status: 'pending',
       createdAt: Date.now(),

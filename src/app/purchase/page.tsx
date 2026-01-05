@@ -11,10 +11,13 @@ interface StockInfo {
   type: MembershipType;
   name: string;
   price: number;
+  discountPrice?: number; // 折扣价
+  discount?: number; // 折扣百分比
   duration: number;
   description: string;
   stock: number;
   available: boolean;
+  enabled?: boolean; // 是否启用
 }
 
 export default function PurchasePage() {
@@ -39,6 +42,7 @@ export default function PurchasePage() {
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null); // 手机端支付URL
   const [selectedPayment, setSelectedPayment] = useState<'wechat' | 'alipay' | null>(null);
   const [loadingQrCode, setLoadingQrCode] = useState(false);
+  const [enabledPaymentMethods, setEnabledPaymentMethods] = useState<('wechat' | 'alipay')[]>(['wechat', 'alipay']);
 
   // 检查支付是否启用
   useEffect(() => {
@@ -48,6 +52,9 @@ export default function PurchasePage() {
         const data = await response.json();
         if (data.code === 200 && data.data) {
           setPaymentEnabled(data.data.enabled);
+          if (data.data.enabledMethods && data.data.enabledMethods.length > 0) {
+            setEnabledPaymentMethods(data.data.enabledMethods);
+          }
         }
       } catch (error) {
         console.error('检查支付状态失败:', error);
@@ -251,12 +258,22 @@ export default function PurchasePage() {
 
   // 会员套餐卡片
   const MembershipCard = ({ type }: { type: MembershipType }) => {
-    const config = DEFAULT_MEMBERSHIP_CONFIG[type];
     const stock = getStockForType(type);
+    const config = stock || DEFAULT_MEMBERSHIP_CONFIG[type];
     const isSelected = selectedType === type;
     const isPopular = type === 'yearly';
     const isAvailable = stock?.available ?? false;
+    const isEnabled = stock?.enabled !== false;
     const stockCount = stock?.stock ?? 0;
+    
+    // 计算实际价格和是否有折扣
+    const actualPrice = stock?.discountPrice && stock.discountPrice > 0 && stock.discountPrice < stock.price 
+      ? stock.discountPrice 
+      : config.price;
+    const hasDiscount = stock?.discountPrice && stock.discountPrice > 0 && stock.discountPrice < stock.price;
+
+    // 未启用的会员类型不显示
+    if (!isEnabled) return null;
 
     return (
       <div
@@ -272,6 +289,13 @@ export default function PurchasePage() {
         {isPopular && isAvailable && (
           <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-yellow-400 to-orange-500 text-white text-xs font-bold rounded-full shadow-lg">
             🔥 最受欢迎
+          </div>
+        )}
+
+        {/* 折扣标签 */}
+        {hasDiscount && stock?.discount && (
+          <div className="absolute -top-2 -right-2 px-2 py-1 bg-red-500 text-white text-xs font-bold rounded-full shadow-lg animate-pulse">
+            {stock.discount}% OFF
           </div>
         )}
 
@@ -301,9 +325,20 @@ export default function PurchasePage() {
           </h3>
 
           <div className="mb-4">
-            <span className={`text-4xl font-extrabold ${isSelected ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`}>
-              ¥{config.price}
-            </span>
+            {hasDiscount ? (
+              <div className="flex flex-col items-center">
+                <span className={`text-sm line-through ${isSelected ? 'text-white/60' : 'text-gray-400'}`}>
+                  ￥{stock?.price}
+                </span>
+                <span className={`text-4xl font-extrabold ${isSelected ? 'text-white' : 'text-red-600 dark:text-red-400'}`}>
+                  ￥{actualPrice}
+                </span>
+              </div>
+            ) : (
+              <span className={`text-4xl font-extrabold ${isSelected ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`}>
+                ￥{config.price}
+              </span>
+            )}
           </div>
 
           <p className={`text-sm mb-6 ${isSelected ? 'text-blue-100' : 'text-gray-600 dark:text-gray-400'}`}>
@@ -368,11 +403,9 @@ export default function PurchasePage() {
 
         {/* 套餐卡片 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-          <MembershipCard type="trial" />
-          <MembershipCard type="monthly" />
-          <MembershipCard type="quarterly" />
-          <MembershipCard type="yearly" />
-          <MembershipCard type="lifetime" />
+          {(['trial', 'monthly', 'quarterly', 'yearly', 'lifetime'] as MembershipType[]).map(type => (
+            <MembershipCard key={type} type={type} />
+          ))}
         </div>
 
         {/* 购买表单 */}
@@ -401,22 +434,45 @@ export default function PurchasePage() {
             </div>
 
             {/* 已选套餐显示 */}
-            {selectedType && (
-              <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-700 dark:text-gray-300">已选套餐</span>
-                  <span className="font-bold text-blue-600 dark:text-blue-400">
-                    {DEFAULT_MEMBERSHIP_CONFIG[selectedType].name}
-                  </span>
+            {selectedType && (() => {
+              const selectedStock = getStockForType(selectedType);
+              const selectedConfig = selectedStock || DEFAULT_MEMBERSHIP_CONFIG[selectedType];
+              const selectedActualPrice = selectedStock?.discountPrice && selectedStock.discountPrice > 0 && selectedStock.discountPrice < selectedStock.price
+                ? selectedStock.discountPrice
+                : selectedConfig.price;
+              const selectedHasDiscount = selectedStock?.discountPrice && selectedStock.discountPrice > 0 && selectedStock.discountPrice < selectedStock.price;
+              
+              return (
+                <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-700 dark:text-gray-300">已选套餐</span>
+                    <span className="font-bold text-blue-600 dark:text-blue-400">
+                      {selectedConfig.name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center mt-2">
+                    <span className="text-gray-700 dark:text-gray-300">支付金额</span>
+                    <div className="text-right">
+                      {selectedHasDiscount && (
+                        <span className="text-sm line-through text-gray-400 mr-2">
+                          ￥{selectedStock?.price}
+                        </span>
+                      )}
+                      <span className={`text-2xl font-bold ${selectedHasDiscount ? 'text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                        ￥{selectedActualPrice}
+                      </span>
+                    </div>
+                  </div>
+                  {selectedHasDiscount && selectedStock?.discount && (
+                    <div className="mt-2 text-right">
+                      <span className="text-xs bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded-full">
+                        已享 {selectedStock.discount}% 折扣
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-gray-700 dark:text-gray-300">支付金额</span>
-                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    ¥{DEFAULT_MEMBERSHIP_CONFIG[selectedType].price}
-                  </span>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* 错误提示 */}
             {error && (
@@ -689,46 +745,50 @@ export default function PurchasePage() {
                   <p className="text-gray-600 dark:text-gray-400 text-center mb-4">
                     请选择支付方式
                   </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button
-                      onClick={() => getPaymentQrCode('wechat')}
-                      disabled={loadingQrCode}
-                      className={`p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-3 ${
-                        selectedPayment === 'wechat' && loadingQrCode
-                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
-                      }`}
-                    >
-                      <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" className="w-7 h-7 text-white" fill="currentColor">
-                          <path d="M8.69 12.94c-.35 0-.67-.04-.95-.11l-.12-.03-.98.49.28-.83-.08-.14c-.45-.63-.72-1.38-.72-2.17 0-2.24 2.13-4.06 4.75-4.06 2.3 0 4.38 1.47 4.66 3.47.05.29.07.58.07.87 0 .06 0 .11-.01.17h.01c-.01 2.24-2.13 4.06-4.74 4.06-.37 0-.72-.04-1.06-.11l-.1-.02-1.01.51zM6.19 16.07l.42-1.23-.13-.2c-.67-.93-1.07-2.04-1.07-3.23 0-3.32 3.16-6.01 7.05-6.01 3.45 0 6.49 2.18 6.98 5.14.07.42.11.85.11 1.29 0 3.32-3.16 6.01-7.05 6.01-.56 0-1.1-.06-1.63-.17l-.16-.04-1.45.73.42-1.23-.08-.12c-.13-.19-.25-.39-.36-.59z"/>
-                        </svg>
-                      </div>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">微信支付</span>
-                      {selectedPayment === 'wechat' && loadingQrCode && (
-                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-green-500 border-t-transparent"></div>
-                      )}
-                    </button>
+                  <div className={`grid gap-4 ${enabledPaymentMethods.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    {enabledPaymentMethods.includes('wechat') && (
+                      <button
+                        onClick={() => getPaymentQrCode('wechat')}
+                        disabled={loadingQrCode}
+                        className={`p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-3 ${
+                          selectedPayment === 'wechat' && loadingQrCode
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
+                        }`}
+                      >
+                        <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                          <svg viewBox="0 0 24 24" className="w-7 h-7 text-white" fill="currentColor">
+                            <path d="M8.69 12.94c-.35 0-.67-.04-.95-.11l-.12-.03-.98.49.28-.83-.08-.14c-.45-.63-.72-1.38-.72-2.17 0-2.24 2.13-4.06 4.75-4.06 2.3 0 4.38 1.47 4.66 3.47.05.29.07.58.07.87 0 .06 0 .11-.01.17h.01c-.01 2.24-2.13 4.06-4.74 4.06-.37 0-.72-.04-1.06-.11l-.1-.02-1.01.51zM6.19 16.07l.42-1.23-.13-.2c-.67-.93-1.07-2.04-1.07-3.23 0-3.32 3.16-6.01 7.05-6.01 3.45 0 6.49 2.18 6.98 5.14.07.42.11.85.11 1.29 0 3.32-3.16 6.01-7.05 6.01-.56 0-1.1-.06-1.63-.17l-.16-.04-1.45.73.42-1.23-.08-.12c-.13-.19-.25-.39-.36-.59z"/>
+                          </svg>
+                        </div>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">微信支付</span>
+                        {selectedPayment === 'wechat' && loadingQrCode && (
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-green-500 border-t-transparent"></div>
+                        )}
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => getPaymentQrCode('alipay')}
-                      disabled={loadingQrCode}
-                      className={`p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-3 ${
-                        selectedPayment === 'alipay' && loadingQrCode
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
-                      }`}
-                    >
-                      <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" className="w-7 h-7 text-white" fill="currentColor">
-                          <path d="M21.5 12c0 5.25-4.25 9.5-9.5 9.5S2.5 17.25 2.5 12 6.75 2.5 12 2.5s9.5 4.25 9.5 9.5zm-5.1 2.64c-.78-.28-1.64-.54-2.54-.77.46-.82.84-1.72 1.12-2.65h-2.37v-.95h2.95v-.57h-2.95v-1.3h-1.7c-.11.16-.24.31-.38.45v.85H7.58v.57h2.95v.95H8.16v.57h5.48c-.22.62-.49 1.21-.82 1.77-1.32-.22-2.58-.34-3.62-.34-1.75 0-2.79.47-2.79 1.37 0 .81.91 1.22 2.45 1.22 1.45 0 2.78-.45 3.92-1.19.63.38 1.19.82 1.64 1.3l1.11-1.11c-.51-.55-1.13-1.05-1.82-1.47z"/>
-                        </svg>
-                      </div>
-                      <span className="font-medium text-gray-900 dark:text-gray-100">支付宝支付</span>
-                      {selectedPayment === 'alipay' && loadingQrCode && (
-                        <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
-                      )}
-                    </button>
+                    {enabledPaymentMethods.includes('alipay') && (
+                      <button
+                        onClick={() => getPaymentQrCode('alipay')}
+                        disabled={loadingQrCode}
+                        className={`p-6 rounded-xl border-2 transition-all flex flex-col items-center gap-3 ${
+                          selectedPayment === 'alipay' && loadingQrCode
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                        }`}
+                      >
+                        <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                          <svg viewBox="0 0 24 24" className="w-7 h-7 text-white" fill="currentColor">
+                            <path d="M21.5 12c0 5.25-4.25 9.5-9.5 9.5S2.5 17.25 2.5 12 6.75 2.5 12 2.5s9.5 4.25 9.5 9.5zm-5.1 2.64c-.78-.28-1.64-.54-2.54-.77.46-.82.84-1.72 1.12-2.65h-2.37v-.95h2.95v-.57h-2.95v-1.3h-1.7c-.11.16-.24.31-.38.45v.85H7.58v.57h2.95v.95H8.16v.57h5.48c-.22.62-.49 1.21-.82 1.77-1.32-.22-2.58-.34-3.62-.34-1.75 0-2.79.47-2.79 1.37 0 .81.91 1.22 2.45 1.22 1.45 0 2.78-.45 3.92-1.19.63.38 1.19.82 1.64 1.3l1.11-1.11c-.51-.55-1.13-1.05-1.82-1.47z"/>
+                          </svg>
+                        </div>
+                        <span className="font-medium text-gray-900 dark:text-gray-100">支付宝支付</span>
+                        {selectedPayment === 'alipay' && loadingQrCode && (
+                          <div className="animate-spin rounded-full h-5 w-5 border-2 border-blue-500 border-t-transparent"></div>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (

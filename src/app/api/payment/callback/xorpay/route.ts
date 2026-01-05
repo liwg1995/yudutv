@@ -158,8 +158,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('处理支付回调失败:', error);
+    // 返回200状态码，内容为fail，虎皮椒会重试回调
     return new NextResponse('fail', {
-      status: 500,
+      status: 200,
       headers: { 'Content-Type': 'text/plain' },
     });
   }

@@ -65,6 +65,7 @@ import WatchRoomConfig from '@/components/WatchRoomConfig';
 import InviteCodeManager from '@/components/InviteCodeManager';
 import PaymentConfigManager from '@/components/PaymentConfigManager';
 import EmailConfigManager from '@/components/EmailConfigManager';
+import MembershipConfigManager from '@/components/MembershipConfigManager';
 import PageLayout from '@/components/PageLayout';
 
 // 统一按钮样式系统
@@ -6217,6 +6218,7 @@ function AdminPageClient() {
     dataMigration: false,
     inviteCodeManager: false,
     paymentConfig: false,
+    membershipConfig: false,
     emailConfig: false,
   });
 
@@ -6406,6 +6408,20 @@ function AdminPageClient() {
                 onToggle={() => toggleTab('paymentConfig')}
               >
                 <PaymentConfigManager />
+              </CollapsibleTab>
+            )}
+
+            {/* 会员价格配置标签 - 仅站长可见 */}
+            {role === 'owner' && (
+              <CollapsibleTab
+                title='会员价格配置'
+                icon={
+                  <Settings size={20} className='text-orange-600 dark:text-orange-400' />
+                }
+                isExpanded={expandedTabs.membershipConfig}
+                onToggle={() => toggleTab('membershipConfig')}
+              >
+                <MembershipConfigManager />
               </CollapsibleTab>
             )}
 

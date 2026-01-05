@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server';
 
 import { db } from '@/lib/db';
-import { MembershipType, DEFAULT_MEMBERSHIP_CONFIG } from '@/lib/types';
+import { MembershipType, DEFAULT_MEMBERSHIP_CONFIG, MembershipConfig } from '@/lib/types';
 
 export const runtime = 'nodejs';
 
@@ -14,6 +14,13 @@ export async function GET() {
   try {
     // 获取所有未使用的邀请码
     const allCodes = await db.getAllInviteCodes();
+    
+    // 获取会员配置（合并默认配置和存储的配置）
+    const storedConfig = await db.getMembershipConfig();
+    const membershipConfig: Record<MembershipType, MembershipConfig> = {
+      ...DEFAULT_MEMBERSHIP_CONFIG,
+      ...storedConfig,
+    };
     
     // 统计各类型的库存数量
     const stock: Record<MembershipType, number> = {
@@ -38,17 +45,20 @@ export async function GET() {
       }
     });
 
-    // 返回库存信息，包含价格和名称
+    // 返回库存信息，包含价格、折扣和名称
     const stockInfo = Object.entries(stock).map(([type, count]) => {
-      const config = DEFAULT_MEMBERSHIP_CONFIG[type as MembershipType];
+      const config = membershipConfig[type as MembershipType];
       return {
         type: type as MembershipType,
         name: config.name,
         price: config.price,
+        discountPrice: config.discountPrice, // 折扣价
+        discount: config.discount, // 折扣百分比
         duration: config.duration,
         description: config.description,
         stock: count,
         available: count > 0,
+        enabled: config.enabled !== false, // 是否启用
       };
     });
 

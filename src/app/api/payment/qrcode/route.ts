@@ -67,12 +67,15 @@ export async function POST(request: NextRequest) {
     const timestamp = Math.floor(Date.now() / 1000).toString();
 
     // 构建支付参数
+    // title 不能超过127字符，不能有表情和%
+    const orderTitle = `会员购买`.substring(0, 42);
+    
     const signData: Record<string, string> = {
       version: '1.1',
       appid: appId,
       trade_order_id: order.orderId,
-      total_fee: order.amount.toString(),
-      title: `会员购买`,
+      total_fee: order.amount.toFixed(2), // 保留两位小数
+      title: orderTitle,
       time: timestamp,
       notify_url: notifyUrl || `${siteUrl}/api/payment/callback/xorpay`,
       return_url: `${siteUrl}/purchase?order_id=${order.orderId}&status=success`,
