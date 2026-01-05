@@ -42,20 +42,54 @@ export async function POST(request: NextRequest) {
 
     // 获取支付配置
     const paymentConfig = await db.getPaymentConfig();
-    if (!paymentConfig || !paymentConfig.enabled || !paymentConfig.xorpay) {
+    if (!paymentConfig || !paymentConfig.enabled) {
       return NextResponse.json(
         { code: 400, message: '支付功能未启用' },
         { status: 400 }
       );
     }
 
-    const { appId, appSecret, notifyUrl } = paymentConfig.xorpay;
+    // 根据支付类型获取对应的配置
+    let appId: string | undefined;
+    let appSecret: string | undefined;
+    
+    if (paymentType === 'wechat') {
+      // 优先使用独立的微信配置
+      if (paymentConfig.xorpayWechat?.appId && paymentConfig.xorpayWechat?.appSecret) {
+        appId = paymentConfig.xorpayWechat.appId;
+        appSecret = paymentConfig.xorpayWechat.appSecret;
+      } else if (paymentConfig.xorpay?.appId && paymentConfig.xorpay?.appSecret) {
+        // 向后兼容：使用通用配置
+        appId = paymentConfig.xorpay.appId;
+        appSecret = paymentConfig.xorpay.appSecret;
+      }
+    } else {
+      // 优先使用独立的支付宝配置
+      if (paymentConfig.xorpayAlipay?.appId && paymentConfig.xorpayAlipay?.appSecret) {
+        appId = paymentConfig.xorpayAlipay.appId;
+        appSecret = paymentConfig.xorpayAlipay.appSecret;
+      } else if (paymentConfig.xorpay?.appId && paymentConfig.xorpay?.appSecret) {
+        // 向后兼容：使用通用配置
+        appId = paymentConfig.xorpay.appId;
+        appSecret = paymentConfig.xorpay.appSecret;
+      }
+    }
+
+    // 回调地址使用通用配置
+    const notifyUrl = paymentConfig.xorpay?.notifyUrl || '';
     
     // 验证必要的配置
     if (!appId || !appSecret) {
-      console.error('虎皮椒配置不完整:', { hasAppId: !!appId, hasAppSecret: !!appSecret });
+      console.error('虎皮椒配置不完整:', { 
+        paymentType,
+        hasAppId: !!appId, 
+        hasAppSecret: !!appSecret,
+        hasWechatConfig: !!paymentConfig.xorpayWechat,
+        hasAlipayConfig: !!paymentConfig.xorpayAlipay,
+        hasGeneralConfig: !!paymentConfig.xorpay,
+      });
       return NextResponse.json(
-        { code: 400, message: '支付配置不完整，请检查虎皮椒 AppId 和 AppSecret' },
+        { code: 400, message: `${paymentType === 'wechat' ? '微信' : '支付宝'}支付配置不完整，请检查 AppId 和 AppSecret` },
         { status: 400 }
       );
     }
@@ -105,13 +139,67 @@ export async function POST(request: NextRequest) {
       paymentType,
     });
 
-    const response = await fetch('https://api.xunhupay.com/payment/do.html', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString(),
-    });
+    // 虎皮椒 API 地址（主要 + 备用）
+    const apiUrls = [
+      'https://api.xunhupay.com/payment/do.html',
+      'https://api.dpweixin.com/payment/do.html', // 备用地址
+    ];
+
+    let response;
+    let lastError: Error | null = null;
+
+    // 尝试所有 API 地址
+    for (const apiUrl of apiUrls) {
+      try {
+        console.log('尝试连接虎皮椒API:', apiUrl);
+        
+        // 使用 AbortController 设置超时
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15秒超时
+        
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': 'LunaTV/1.0',
+          },
+          body: formData.toString(),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // 请求成功，跳出循环
+        console.log('虎皮椒API连接成功:', apiUrl);
+        break;
+      } catch (fetchError: any) {
+        lastError = fetchError;
+        console.error(`虎皮椒API连接失败 (${apiUrl}):`, {
+          name: fetchError?.name,
+          message: fetchError?.message,
+          cause: fetchError?.cause,
+        });
+        // 继续尝试下一个地址
+        response = undefined;
+      }
+    }
+
+    // 所有地址都失败
+    if (!response) {
+      const errorMsg = lastError?.name === 'AbortError' 
+        ? '支付接口请求超时，请稍后重试'
+        : `无法连接支付接口: ${lastError?.message || 'fetch failed'}`;
+      
+      console.error('所有虎皮椒API地址均失败:', {
+        error: lastError?.message,
+        name: lastError?.name,
+      });
+      
+      return NextResponse.json(
+        { code: 500, message: errorMsg },
+        { status: 500 }
+      );
+    }
 
     // 检查响应状态
     if (!response.ok) {

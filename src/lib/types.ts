@@ -511,11 +511,23 @@ export interface PaymentConfig {
     notifyUrl: string; // 回调地址
   };
   
-  // 虎皮椒配置（支持微信和支付宝）
+  // 虎皮椒配置（向后兼容，单一配置）
   xorpay?: {
     appId: string; // 虎皮椒AppID
     appSecret: string; // 虎皮椒AppSecret
     notifyUrl: string; // 回调地址
+  };
+  
+  // 虎皮椒微信支付配置（独立配置）
+  xorpayWechat?: {
+    appId: string; // 微信支付 AppID
+    appSecret: string; // 微信支付 AppSecret
+  };
+  
+  // 虎皮椒支付宝配置（独立配置）
+  xorpayAlipay?: {
+    appId: string; // 支付宝 AppID
+    appSecret: string; // 支付宝 AppSecret
   };
 }
 
