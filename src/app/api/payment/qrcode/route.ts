@@ -50,6 +50,16 @@ export async function POST(request: NextRequest) {
     }
 
     const { appId, appSecret, notifyUrl } = paymentConfig.xorpay;
+    
+    // 验证必要的配置
+    if (!appId || !appSecret) {
+      console.error('虎皮椒配置不完整:', { hasAppId: !!appId, hasAppSecret: !!appSecret });
+      return NextResponse.json(
+        { code: 400, message: '支付配置不完整，请检查虎皮椒 AppId 和 AppSecret' },
+        { status: 400 }
+      );
+    }
+    
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001';
 
     // 生成随机字符串和时间戳
@@ -100,7 +110,29 @@ export async function POST(request: NextRequest) {
       body: formData.toString(),
     });
 
-    const result = await response.json();
+    // 检查响应状态
+    if (!response.ok) {
+      console.error('虎皮椒API请求失败:', response.status, response.statusText);
+      return NextResponse.json(
+        { code: 400, message: `支付接口请求失败: ${response.status}` },
+        { status: 400 }
+      );
+    }
+
+    const responseText = await response.text();
+    console.log('虎皮椒API原始返回:', responseText);
+    
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('虎皮椒API返回解析失败:', parseError);
+      return NextResponse.json(
+        { code: 400, message: '支付接口返回格式错误' },
+        { status: 400 }
+      );
+    }
+    
     console.log('虎皮椒API返回:', result);
 
     if (result.errcode !== 0) {
@@ -126,10 +158,10 @@ export async function POST(request: NextRequest) {
         paymentType,
       },
     });
-  } catch (error) {
-    console.error('获取支付二维码失败:', error);
+  } catch (error: any) {
+    console.error('获取支付二维码失败:', error?.message || error);
     return NextResponse.json(
-      { code: 500, message: '服务器错误' },
+      { code: 500, message: error?.message || '服务器错误' },
       { status: 500 }
     );
   }
